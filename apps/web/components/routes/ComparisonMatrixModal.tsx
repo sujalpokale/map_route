@@ -95,21 +95,21 @@ export default function ComparisonMatrixModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-white border border-[#dadce0] rounded-3xl shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-900/90">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dadce0] bg-[#f8f9fa]">
           <div>
-            <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              <Award className="w-5 h-5 text-cyan-400" /> Multi-Route Trade-off Matrix
+            <h3 className="text-base font-bold text-[#202124] flex items-center gap-2">
+              <Award className="w-5 h-5 text-[#1a73e8]" /> Multi-Route Comparison Matrix
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-[#5f6368] mt-0.5">
               Side-by-side comparative analysis across physical, economic, and safety metrics.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full text-[#5f6368] hover:text-[#202124] hover:bg-[#e8eaed] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -119,14 +119,14 @@ export default function ComparisonMatrixModal({
         <div className="flex-1 overflow-x-auto overflow-y-auto p-6">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/10">
-                <th className="py-3 px-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Metric</th>
+              <tr className="border-b border-[#dadce0]">
+                <th className="py-3 px-4 text-xs font-bold text-[#5f6368] uppercase tracking-wider">Metric</th>
                 {routes.map((r) => (
-                  <th key={r.id} className="py-3 px-4 text-sm font-semibold text-slate-200 text-center min-w-[150px]">
+                  <th key={r.id} className="py-3 px-4 text-sm font-semibold text-[#202124] text-center min-w-[150px]">
                     <div className="flex flex-col items-center">
                       <span>{r.label}</span>
                       {r.is_recommended && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 mt-1">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e6f4ea] text-[#137333] border border-[#ceead6] mt-1">
                           RECOMMENDED
                         </span>
                       )}
@@ -135,23 +135,23 @@ export default function ComparisonMatrixModal({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-sm">
+            <tbody className="divide-y divide-[#f1f3f4] text-sm">
               {rows.map((row, idx) => (
-                <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-3 px-4 font-medium text-slate-300 text-xs">{row.metric}</td>
+                <tr key={idx} className="hover:bg-[#f8f9fa] transition-colors">
+                  <td className="py-2.5 px-4 font-medium text-[#3c4043] text-xs">{row.metric}</td>
                   {routes.map((r) => {
                     const isOptimal = row.isBest(r);
                     return (
-                      <td key={r.id} className="py-3 px-4 text-center">
+                      <td key={r.id} className="py-2.5 px-4 text-center">
                         <div
                           className={`inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
                             isOptimal
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                              : "text-slate-300"
+                              ? "bg-[#e6f4ea] text-[#137333] border border-[#ceead6]"
+                              : "text-[#5f6368]"
                           }`}
                         >
                           {row.getValue(r)}
-                          {isOptimal && <Check className="w-3.5 h-3.5 ml-1 text-emerald-400" />}
+                          {isOptimal && <Check className="w-3.5 h-3.5 ml-1 text-[#188038]" />}
                         </div>
                       </td>
                     );
@@ -163,10 +163,10 @@ export default function ComparisonMatrixModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/10 bg-slate-900/90">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#dadce0] bg-[#f8f9fa]">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-white/5 transition-colors"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-[#5f6368] hover:bg-[#e8eaed] transition-colors"
           >
             Close
           </button>
@@ -178,7 +178,7 @@ export default function ComparisonMatrixModal({
                 onClose();
               }
             }}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors shadow-lg shadow-cyan-500/20"
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-[#1a73e8] hover:bg-[#1557b0] text-white transition-colors shadow-sm"
           >
             Apply Recommended Route <ArrowRight className="w-4 h-4" />
           </button>

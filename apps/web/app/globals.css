@@ -2,81 +2,180 @@
 @import "leaflet/dist/leaflet.css";
 
 :root {
-  --background: #080c14;
-  --foreground: #f1f5f9;
-  --card-bg: rgba(15, 23, 42, 0.75);
-  --border-color: rgba(255, 255, 255, 0.08);
+  /* Google Maps Authentic Design Tokens */
+  --gmap-bg: #f8f9fa;
+  --gmap-surface: #ffffff;
+  --gmap-surface-hover: #f1f3f4;
+  --gmap-surface-active: #e8eaed;
+  --gmap-border: #dadce0;
+  --gmap-border-subtle: #e8eaed;
+
+  /* Google Brand & Semantic Palette */
+  --gmap-blue: #1a73e8;
+  --gmap-blue-hover: #1557b0;
+  --gmap-blue-light: #e8f0fe;
+  --gmap-blue-surface: #f1f6fd;
+
+  --gmap-green: #188038;
+  --gmap-green-light: #e6f4ea;
+
+  --gmap-red: #d93025;
+  --gmap-red-light: #fce8e6;
+
+  --gmap-yellow: #f9ab00;
+  --gmap-yellow-light: #fef7e0;
+
+  --gmap-text-primary: #202124;
+  --gmap-text-secondary: #5f6368;
+  --gmap-text-tertiary: #70757a;
+  --gmap-text-disabled: #80868b;
+
+  /* Google Maps Material Elevation Shadows */
+  --gmap-shadow-card: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+  --gmap-shadow-float: 0 2px 6px 2px rgba(60, 64, 67, 0.15), 0 1px 2px 0 rgba(60, 64, 67, 0.3);
+  --gmap-shadow-hover: 0 4px 12px 0 rgba(60, 64, 67, 0.25);
+  --gmap-shadow-pill: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-  overflow-x: hidden;
+  background: var(--gmap-bg);
+  color: var(--gmap-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Roboto", "Segoe UI", Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbars */
+/* Google Maps Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
+  background: #dadce0;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.7);
+  background: #bdc1c6;
 }
 
-/* Glassmorphism primitives */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+/* Google Maps Card & Floating Elements */
+.gmap-card {
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 12px;
+  box-shadow: var(--gmap-shadow-card);
 }
 
-.glass-panel-hover:hover {
-  border-color: rgba(6, 182, 212, 0.35);
-  background: rgba(15, 23, 42, 0.95);
-  box-shadow: 0 10px 40px 0 rgba(6, 182, 212, 0.12);
+.gmap-floating-panel {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(218, 220, 224, 0.7);
 }
 
-/* Glow effects */
-.glow-cyan {
-  box-shadow: 0 0 25px -3px rgba(6, 182, 212, 0.35);
+.gmap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #dadce0;
+  background: #ffffff;
+  color: #3c4043;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.glow-emerald {
-  box-shadow: 0 0 25px -3px rgba(16, 185, 129, 0.35);
+.gmap-chip:hover {
+  background: #f1f3f4;
+  border-color: #bdc1c6;
 }
 
-/* Leaflet Map overrides for dark mode */
+.gmap-chip-active {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  border-color: #1a73e8 !important;
+  font-weight: 600;
+}
+
+/* Leaflet Container Google Maps Skinning */
 .leaflet-container {
   width: 100%;
   height: 100%;
-  background: #090d16 !important;
+  background: #e5e3df !important; /* Authentic Google Maps light canvas base */
   font-family: inherit;
 }
 
+/* Clean Google Maps Popups */
 .leaflet-popup-content-wrapper {
-  background: #0f172a !important;
-  color: #f1f5f9 !important;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #ffffff !important;
+  color: #202124 !important;
   border-radius: 12px !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 4px 16px rgba(60, 64, 67, 0.25) !important;
+  border: 1px solid #dadce0 !important;
+  padding: 2px !important;
 }
 
 .leaflet-popup-tip {
-  background: #0f172a !important;
+  background: #ffffff !important;
+  box-shadow: 0 3px 6px rgba(60, 64, 67, 0.2) !important;
 }
 
-.leaflet-control-zoom a {
-  background: #0f172a !important;
-  color: #f1f5f9 !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+  line-height: 1.4 !important;
+}
+
+/* Hide default leaflet zoom controls so we render authentic Google Maps custom controls */
+.leaflet-control-zoom {
+  display: none !important;
+}
+
+/* Custom Tooltip */
+.custom-leaflet-tooltip {
+  background: #ffffff !important;
+  color: #202124 !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+.custom-leaflet-tooltip::before {
+  border-top-color: #ffffff !important;
+}
+
+/* Animated Radar Pulse for Origin Marker */
+@keyframes gmap-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.gmap-pulse-circle {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.35);
+  animation: gmap-pulse 2.2s infinite ease-out;
+  pointer-events: none;
 }

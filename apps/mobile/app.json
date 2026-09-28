@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "Route Intelligence",
+    "slug": "route-intelligence",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "routeintelligence",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.routeintelligence.mobile",
+      "config": {
+        "googleMapsApiKey": "AIzaSyCSDegG8p9jogUj-dw6jSHwh4D63_X7y10"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Route Intelligence uses your location for turn-by-turn navigation and optimal route sequencing.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Route Intelligence uses background location to monitor active delivery trips, predict arrival times, and detect route deviations.",
+        "NSMicrophoneUsageDescription": "Route Intelligence uses microphone for hands-free AI voice navigation commands.",
+        "NSCameraUsageDescription": "Route Intelligence uses the camera to scan addresses and capture proof of delivery."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#090d16"
+      },
+      "package": "com.routeintelligence.mobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCSDegG8p9jogUj-dw6jSHwh4D63_X7y10"
+        }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECORD_AUDIO",
+        "CAMERA",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#090d16"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Route Intelligence requires location permissions for real-time navigation and telematics tracking."
+        }
+      ]
+    ]
+  }
+}

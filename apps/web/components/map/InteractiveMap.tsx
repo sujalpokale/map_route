@@ -14,15 +14,19 @@ interface InteractiveMapProps {
   deliveryStops?: StopItem[];
   optimizedPolyline?: [number, number][];
   onMapClick?: (lat: number, lng: number) => void;
+  onSetOrigin?: (point: GeoPoint) => void;
+  onSetDestination?: (point: GeoPoint) => void;
+  userLocation?: GeoPoint | null;
+  onUserLocationFound?: (loc: GeoPoint) => void;
 }
 
 const DynamicMap = dynamic(() => import("./MapInner"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-md rounded-2xl border border-white/10 text-slate-400">
-      <div className="w-10 h-10 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mb-4" />
-      <span className="text-sm font-medium tracking-wide">Initializing Geospatial Vector Layers...</span>
-      <span className="text-xs text-slate-500 mt-1">OpenStreetMap & CartoDB Dark Matter Engine</span>
+    <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#e5e3df] text-[#5f6368]">
+      <div className="w-10 h-10 border-4 border-[#1a73e8]/20 border-t-[#1a73e8] rounded-full animate-spin mb-3" />
+      <span className="text-sm font-semibold tracking-wide text-[#202124]">Loading Google Maps Layers...</span>
+      <span className="text-xs text-[#70757a] mt-1">High Precision Geospatial Routing Engine</span>
     </div>
   ),
 });

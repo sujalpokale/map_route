@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY apps/api/requirements.txt /app/apps/api/requirements.txt
+COPY ml/requirements.txt /app/ml/requirements.txt
+
+# Install python dependencies
+RUN pip install --no-cache-dir -r /app/apps/api/requirements.txt
+RUN pip install --no-cache-dir -r /app/ml/requirements.txt
+
+# Copy source code
+COPY apps/api /app/apps/api
+COPY ml /app/ml
+
+ENV PYTHONPATH="/app:/app/apps/api:/app/ml"
+
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "apps.api.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
