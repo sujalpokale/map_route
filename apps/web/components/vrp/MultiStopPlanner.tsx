@@ -31,6 +31,11 @@ import {
   Building2,
   ArrowRight,
   Radio,
+  Bike,
+  Car,
+  Truck,
+  Bus,
+  ShieldCheck,
 } from "lucide-react";
 
 interface MultiStopPlannerProps {
@@ -147,7 +152,6 @@ export default function MultiStopPlanner({
   const [selectedMiddleGeo, setSelectedMiddleGeo] = useState<GeoPoint | null>(null);
   const [isSearchingMiddle, setIsSearchingMiddle] = useState(false);
   const [showMiddleDropdown, setShowMiddleDropdown] = useState(false);
-  const [newWeight, setNewWeight] = useState("15");
   const [newPriority, setNewPriority] = useState(1);
 
   // 3. End Point Mode State: "last_stop" | "return_origin" | "custom_dest"
@@ -160,6 +164,7 @@ export default function MultiStopPlanner({
   const [showEndDropdown, setShowEndDropdown] = useState(false);
 
   // Solve & Response State
+  const [vehicleType, setVehicleType] = useState<"BIKE" | "CAR" | "VAN" | "BUS" | "TRUCK">("BIKE");
   const [loading, setLoading] = useState(false);
   const [lastResponse, setLastResponse] = useState<OptimizeStopsResponse | null>(null);
   const [isOptimized, setIsOptimized] = useState(false);
@@ -331,7 +336,6 @@ export default function MultiStopPlanner({
       address: middleQuery.trim(),
       lat,
       lng,
-      package_weight_kg: parseFloat(newWeight) || 10.0,
       priority: newPriority,
     };
 
@@ -411,7 +415,7 @@ export default function MultiStopPlanner({
         origin: origin,
         destination: finalDest,
         stops: stops,
-        vehicle_type: "VAN",
+        vehicle_type: vehicleType,
       });
       setLastResponse(res);
       setIsOptimized(true);
@@ -451,6 +455,86 @@ export default function MultiStopPlanner({
           <span>{loading ? "Optimizing..." : "Calculate Best Route"}</span>
         </button>
       </div>
+
+      {/* ========================================================= */}
+      {/* Vehicle Selection & Road Guidance Toolbar */}
+      {/* ========================================================= */}
+      <div className="p-3 rounded-2xl bg-white border border-[#dadce0] shadow-2xs space-y-2.5">
+        <div className="flex items-center justify-between text-xs font-bold text-[#202124]">
+          <span className="flex items-center gap-1.5">
+            <Navigation className="w-3.5 h-3.5 text-[#1a73e8]" />
+            Routing Vehicle & Road Type Mode
+          </span>
+          <span className="text-[10px] font-semibold text-[#1a73e8] bg-[#e8f0fe] px-2 py-0.5 rounded-full">
+            {vehicleType === "BIKE"
+              ? "Small Roads & Alleys"
+              : vehicleType === "CAR"
+              ? "City Streets & Avenues"
+              : vehicleType === "VAN"
+              ? "Delivery Corridors"
+              : vehicleType === "BUS"
+              ? "Transit Boulevards"
+              : "Freight Bypasses"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {[
+            { id: "BIKE", label: "Bike", sub: "Small roads", icon: Bike, color: "text-[#188038]" },
+            { id: "CAR", label: "Car", sub: "City streets", icon: Car, color: "text-[#1a73e8]" },
+            { id: "VAN", label: "Van", sub: "Deliveries", icon: Truck, color: "text-[#b06000]" },
+            { id: "BUS", label: "Bus", sub: "Transit roads", icon: Bus, color: "text-[#8430ce]" },
+            { id: "TRUCK", label: "Truck", sub: "Freight ring", icon: Truck, color: "text-[#c5221f]" },
+          ].map((v) => {
+            const Icon = v.icon;
+            const isSelected = vehicleType === v.id;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => {
+                  setVehicleType(v.id as any);
+                  setIsOptimized(false);
+                }}
+                className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center transition-all ${
+                  isSelected
+                    ? "bg-[#e8f0fe] border-[#1a73e8] shadow-xs ring-1 ring-[#1a73e8]"
+                    : "bg-[#f8f9fa] border-[#dadce0] hover:bg-white text-[#5f6368]"
+                }`}
+              >
+                <Icon className={`w-4 h-4 mb-0.5 ${isSelected ? v.color : "text-[#5f6368]"}`} />
+                <span className={`text-[11px] font-bold ${isSelected ? "text-[#202124]" : "text-[#5f6368]"}`}>
+                  {v.label}
+                </span>
+                <span className="text-[9px] text-[#70757a] hidden sm:block truncate">{v.sub}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Dynamic Road Characteristic Explanation banner */}
+        <div className="text-[11px] text-[#3c4043] bg-[#f8f9fa] border border-[#f1f3f4] rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-[#1a73e8] shrink-0" />
+          <span className="leading-snug">
+            {vehicleType === "BIKE" && (
+              <><b>Bike Mode:</b> Suggests small roads, residential alleys, and shortcuts. Completely bypasses car gridlock and tolls.</>
+            )}
+            {vehicleType === "CAR" && (
+              <><b>Car Mode:</b> Suggests primary city streets, avenues, flyovers, and standard traffic lanes.</>
+            )}
+            {vehicleType === "VAN" && (
+              <><b>Van Mode:</b> Commercial courier routes with accessible curbside loading zones and parcel delivery lanes.</>
+            )}
+            {vehicleType === "BUS" && (
+              <><b>Bus Mode:</b> Wide transit boulevards & high-clearance arterials. Avoids narrow residential alleys & low clearances.</>
+            )}
+            {vehicleType === "TRUCK" && (
+              <><b>Truck Mode:</b> Outer ring bypasses & freight corridors. Strictly avoids weight-restricted narrow streets.</>
+            )}
+          </span>
+        </div>
+      </div>
+
 
       {/* ========================================================= */}
       {/* 2. Structured Step-by-Step Flow Cards (No Overlaps) */}
@@ -665,19 +749,10 @@ export default function MultiStopPlanner({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                <input
-                  type="number"
-                  value={newWeight}
-                  onChange={(e) => setNewWeight(e.target.value)}
-                  placeholder="kg"
-                  title="Payload weight in kg"
-                  className="w-14 bg-[#f8f9fa] border border-[#dadce0] rounded-xl px-1 py-1.5 text-xs text-[#202124] text-center focus:outline-none focus:border-[#1a73e8]"
-                />
-
                 <select
                   value={newPriority}
                   onChange={(e) => setNewPriority(parseInt(e.target.value))}
-                  className="bg-[#f8f9fa] border border-[#dadce0] rounded-xl px-1.5 py-1.5 text-xs text-[#202124] focus:outline-none focus:border-[#1a73e8]"
+                  className="bg-[#f8f9fa] border border-[#dadce0] rounded-xl px-2 py-1.5 text-xs text-[#202124] focus:outline-none focus:border-[#1a73e8]"
                 >
                   <option value={1}>Normal</option>
                   <option value={2}>High</option>
@@ -808,11 +883,43 @@ export default function MultiStopPlanner({
       {/* 3. Result KPI metrics (When Optimized) */}
       {/* ========================================================= */}
       {lastResponse && (
-        <div className="p-3 rounded-2xl bg-[#e8f0fe] border border-[#d2e3fc] space-y-2 animate-in fade-in duration-200">
-          <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="p-3.5 rounded-2xl bg-[#e8f0fe] border border-[#d2e3fc] space-y-3 animate-in fade-in duration-200">
+          {/* Vehicle Profile & Road Suitability Badges */}
+          <div className="flex items-center justify-between gap-2 flex-wrap border-b border-[#d2e3fc]/80 pb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded-md bg-[#1a73e8] text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                {lastResponse.vehicle_type === "BIKE" ? (
+                  <Bike className="w-3 h-3" />
+                ) : lastResponse.vehicle_type === "BUS" ? (
+                  <Bus className="w-3 h-3" />
+                ) : lastResponse.vehicle_type === "TRUCK" ? (
+                  <Truck className="w-3 h-3" />
+                ) : lastResponse.vehicle_type === "VAN" ? (
+                  <Truck className="w-3 h-3" />
+                ) : (
+                  <Car className="w-3 h-3" />
+                )}
+                {lastResponse.vehicle_type || vehicleType} ROUTE
+              </span>
+              {lastResponse.road_type_summary && (
+                <span className="text-[11px] font-semibold text-[#174ea6] bg-white/80 px-2 py-0.5 rounded-md border border-[#d2e3fc]">
+                  🛣️ {lastResponse.road_type_summary}
+                </span>
+              )}
+            </div>
+
+            {lastResponse.road_suitability_score && (
+              <span className="text-[11px] font-bold text-[#137333] bg-[#e6f4ea] border border-[#ceead6] px-2 py-0.5 rounded-md flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-[#188038]" />
+                {lastResponse.road_suitability_score}% Road Fit
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 text-center">
             <div>
               <div className="text-[10px] text-[#5f6368] flex items-center justify-center gap-1">
-                <Navigation className="w-3 h-3 text-[#1a73e8]" /> Total Distance
+                <Navigation className="w-3 h-3 text-[#1a73e8]" /> Distance
               </div>
               <div className="text-sm font-bold text-[#202124] mt-0.5">
                 {lastResponse.total_distance_km} km
@@ -828,6 +935,14 @@ export default function MultiStopPlanner({
             </div>
             <div>
               <div className="text-[10px] text-[#5f6368] flex items-center justify-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#8430ce]" /> Avg Speed
+              </div>
+              <div className="text-sm font-bold text-[#202124] mt-0.5">
+                {lastResponse.average_speed_kmh ? `${Math.round(lastResponse.average_speed_kmh)} km/h` : "32 km/h"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-[#5f6368] flex items-center justify-center gap-1">
                 <Weight className="w-3 h-3 text-[#ea8600]" /> Payload
               </div>
               <div className="text-sm font-bold text-[#202124] mt-0.5">
@@ -835,6 +950,14 @@ export default function MultiStopPlanner({
               </div>
             </div>
           </div>
+
+          {lastResponse.vehicle_road_guidance && (
+            <div className="text-[11px] text-[#1a73e8] bg-white/90 p-2 rounded-xl border border-[#d2e3fc] flex items-start gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#1a73e8] shrink-0 mt-0.5" />
+              <span>{lastResponse.vehicle_road_guidance}</span>
+            </div>
+          )}
+
           {lastResponse.summary && (
             <p className="text-[11px] text-[#3c4043] leading-relaxed pt-1 border-t border-[#d2e3fc]/60">
               {lastResponse.summary}
@@ -925,12 +1048,10 @@ export default function MultiStopPlanner({
                         )}
                       </div>
                       <div className="text-[10px] text-[#5f6368] flex items-center gap-1.5 mt-0.5">
-                        <span>{stop.package_weight_kg} kg</span>
-                        <span>•</span>
                         {isUrgent ? (
-                          <span className="text-[#d93025] font-bold">⚡ Urgent</span>
+                          <span className="text-[#d93025] font-bold">⚡ Urgent Priority</span>
                         ) : (
-                          <span>Priority {stop.priority}</span>
+                          <span>Priority {stop.priority === 2 ? 'High' : 'Normal'}</span>
                         )}
                       </div>
                     </div>

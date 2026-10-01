@@ -10,6 +10,8 @@ import {
   checkReroute,
   OptimizeStopsResponse,
   StopItem,
+  inspectLocationRoadProfile,
+  LocationRoadProfileResponse,
 } from "@/lib/api";
 import InteractiveMap from "@/components/map/InteractiveMap";
 import GooglePlaceAutocomplete from "@/components/routes/GooglePlaceAutocomplete";
@@ -28,6 +30,7 @@ import {
   Car,
   Truck,
   Bike,
+  Bus,
   BatteryCharging,
   Layers,
   Bot,
@@ -46,6 +49,7 @@ import {
   Circle,
   Menu,
   Crosshair,
+  Loader2,
 } from "lucide-react";
 
 export default function Home() {
@@ -96,11 +100,16 @@ export default function Home() {
   const [isLocatingUser, setIsLocatingUser] = useState(false);
   const [locationToast, setLocationToast] = useState<string | null>(null);
 
-  const [vehicleType, setVehicleType] = useState<"CAR" | "VAN" | "TRUCK" | "BIKE" | "EV">("CAR");
+  const [vehicleType, setVehicleType] = useState<"CAR" | "VAN" | "TRUCK" | "BUS" | "BIKE" | "EV">("CAR");
   const [fuelType, setFuelType] = useState<"PETROL" | "DIESEL" | "ELECTRIC" | "CNG">("PETROL");
   const [optimizationMode, setOptimizationMode] = useState<
     "Fastest" | "Shortest" | "Cheapest" | "Fuel Efficient" | "Balanced" | "Fleet Optimized" | "EV Optimal"
   >("Balanced");
+
+  // Single Location Road & Vehicle Accessibility Inspection state
+  const [inspectedLocation, setInspectedLocation] = useState<LocationRoadProfileResponse | null>(null);
+  const [isInspectingLocation, setIsInspectingLocation] = useState(false);
+  const [activeInspectorVehicle, setActiveInspectorVehicle] = useState<"BIKE" | "CAR" | "VAN" | "BUS" | "TRUCK">("BIKE");
 
   const [routes, setRoutes] = useState<CandidateRoute[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -134,6 +143,28 @@ export default function Home() {
       fetchRoutes(origin, destination);
     }
   }, [vehicleType, optimizationMode]);
+
+  // 3. Inspect single location road profile whenever origin is set but destination is empty
+  useEffect(() => {
+    if (origin && !destination) {
+      inspectSingleLocation(origin);
+    }
+  }, [origin, destination]);
+
+  const inspectSingleLocation = async (point: GeoPoint) => {
+    setIsInspectingLocation(true);
+    try {
+      const res = await inspectLocationRoadProfile(point.lat, point.lng, point.address || point.name);
+      setInspectedLocation(res);
+      if (res.best_vehicle_for_location && ["BIKE", "CAR", "VAN", "BUS", "TRUCK"].includes(res.best_vehicle_for_location)) {
+        setActiveInspectorVehicle(res.best_vehicle_for_location as any);
+      }
+    } catch (e) {
+      console.warn("Location inspection error:", e);
+    } finally {
+      setIsInspectingLocation(false);
+    }
+  };
 
   const fetchRoutes = async (orig = origin, dest = destination) => {
     if (!orig || !dest) {

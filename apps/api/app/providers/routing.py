@@ -237,66 +237,28 @@ class OSRMProvider(BaseRoutingProvider):
             ]
 
         # Longer trip (>= 4 km)
-        if vehicle_type in [VehicleTypeEnum.TRUCK, VehicleTypeEnum.BUS]:
+        if vehicle_type == VehicleTypeEnum.BIKE:
             return [
                 RawRouteCandidate(
-                    label="Route A (Freight Expressway / Arterial)",
+                    label="Route A (Direct Small Road & Alley Shortcut - Bike Priority)",
                     coordinates=base_coords,
                     distance_km=base_dist,
                     duration_min=base_dur,
                     traffic_level="Low",
-                    traffic_delay_min=1.5,
-                    has_tolls=True,
-                    toll_cost_inr=90.0,
-                    road_quality="Good",
-                    road_type="highway",
-                    vehicle_suitability={"TRUCK": 98.0, "BUS": 97.0, "CAR": 90.0, "BIKE": 25.0}
-                ),
-                RawRouteCandidate(
-                    label="Route B (Commercial Ring Corridor)",
-                    coordinates=sec_coords,
-                    distance_km=sec_dist,
-                    duration_min=sec_dur,
-                    traffic_level="Moderate",
-                    traffic_delay_min=4.0,
-                    has_tolls=True,
-                    toll_cost_inr=60.0,
-                    road_quality="Good",
-                    road_type="bypass",
-                    vehicle_suitability={"TRUCK": 92.0, "BUS": 90.0, "CAR": 88.0, "BIKE": 30.0}
-                ),
-                RawRouteCandidate(
-                    label="Route C (Secondary City Link)",
-                    coordinates=tert_coords,
-                    distance_km=tert_dist,
-                    duration_min=tert_dur,
-                    traffic_level="Moderate",
-                    traffic_delay_min=6.0,
-                    has_tolls=False,
-                    toll_cost_inr=0.0,
-                    road_quality="Moderate",
-                    road_type="urban",
-                    vehicle_suitability={"TRUCK": 65.0, "BUS": 68.0, "CAR": 85.0, "BIKE": 90.0}
-                )
-            ]
-
-        elif vehicle_type == VehicleTypeEnum.BIKE:
-            return [
-                RawRouteCandidate(
-                    label="Route A (Direct City Route - Shortest)",
-                    coordinates=base_coords,
-                    distance_km=base_dist,
-                    duration_min=base_dur,
-                    traffic_level="Low",
-                    traffic_delay_min=0.5,
+                    traffic_delay_min=0.4,
                     has_tolls=False,
                     toll_cost_inr=0.0,
                     road_quality="Good",
-                    road_type="urban",
-                    vehicle_suitability={"BIKE": 99.0, "CAR": 88.0, "TRUCK": 40.0}
+                    road_type="urban_narrow",
+                    vehicle_suitability={"BIKE": 99.5, "CAR": 62.0, "VAN": 55.0, "BUS": 20.0, "TRUCK": 15.0},
+                    steps=[
+                        TurnStep(instruction="Turn into local residential alley / small road (avoids vehicular gridlock)", distance_m=round(base_dist * 400), duration_s=round(base_dur * 25), road_name="Neighborhood Lane"),
+                        TurnStep(instruction="Proceed straight along dedicated cycle/two-wheeler connector", distance_m=round(base_dist * 400), duration_s=round(base_dur * 25), road_name="Local Link"),
+                        TurnStep(instruction="Arrive directly at destination point via small road access", distance_m=round(base_dist * 200), duration_s=round(base_dur * 10), road_name="Destination Access")
+                    ]
                 ),
                 RawRouteCandidate(
-                    label="Route B (Green Boulevard / Low Traffic)",
+                    label="Route B (Green Boulevard / Low Traffic Small Streets)",
                     coordinates=sec_coords,
                     distance_km=sec_dist,
                     duration_min=sec_dur,
@@ -305,29 +267,173 @@ class OSRMProvider(BaseRoutingProvider):
                     has_tolls=False,
                     toll_cost_inr=0.0,
                     road_quality="Good",
-                    road_type="arterial",
-                    vehicle_suitability={"BIKE": 96.0, "CAR": 90.0, "TRUCK": 50.0}
+                    road_type="residential",
+                    vehicle_suitability={"BIKE": 97.0, "CAR": 72.0, "VAN": 65.0, "BUS": 28.0, "TRUCK": 20.0}
                 ),
                 RawRouteCandidate(
-                    label="Route C (Secondary Commercial Link)",
+                    label="Route C (Secondary Street Link - Mixed Flow)",
                     coordinates=tert_coords,
                     distance_km=tert_dist,
                     duration_min=tert_dur,
                     traffic_level="Moderate",
-                    traffic_delay_min=1.8,
+                    traffic_delay_min=1.5,
                     has_tolls=False,
                     toll_cost_inr=0.0,
                     road_quality="Good",
                     road_type="urban",
-                    vehicle_suitability={"BIKE": 88.0, "CAR": 85.0, "TRUCK": 60.0}
+                    vehicle_suitability={"BIKE": 91.0, "CAR": 85.0, "VAN": 80.0, "BUS": 45.0, "TRUCK": 30.0}
+                )
+            ]
+
+        elif vehicle_type == VehicleTypeEnum.BUS:
+            return [
+                RawRouteCandidate(
+                    label="Route A (Transit Boulevard & High-Clearance Arterial)",
+                    coordinates=base_coords,
+                    distance_km=base_dist,
+                    duration_min=base_dur,
+                    traffic_level="Low",
+                    traffic_delay_min=1.8,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"BUS": 99.0, "CAR": 92.0, "TRUCK": 90.0, "VAN": 88.0, "BIKE": 40.0},
+                    steps=[
+                        TurnStep(instruction="Follow wide multi-lane passenger transit boulevard (High overhead clearance)", distance_m=round(base_dist * 500), duration_s=round(base_dur * 30), road_name="Transit Boulevard"),
+                        TurnStep(instruction="Stay on primary arterial avenue, avoiding narrow residential side-streets", distance_m=round(base_dist * 350), duration_s=round(base_dur * 20), road_name="Main Arterial"),
+                        TurnStep(instruction="Arrive via broad passenger terminal link", distance_m=round(base_dist * 150), duration_s=round(base_dur * 10), road_name="Terminal Connector")
+                    ]
+                ),
+                RawRouteCandidate(
+                    label="Route B (Central Bus Corridor - High Capacity)",
+                    coordinates=sec_coords,
+                    distance_km=sec_dist,
+                    duration_min=sec_dur,
+                    traffic_level="Moderate",
+                    traffic_delay_min=3.5,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"BUS": 93.0, "CAR": 90.0, "TRUCK": 85.0, "VAN": 86.0, "BIKE": 45.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Outer Transit Ring Avenue)",
+                    coordinates=tert_coords,
+                    distance_km=tert_dist,
+                    duration_min=tert_dur,
+                    traffic_level="Moderate",
+                    traffic_delay_min=5.0,
+                    has_tolls=True,
+                    toll_cost_inr=70.0,
+                    road_quality="Good",
+                    road_type="bypass",
+                    vehicle_suitability={"BUS": 88.0, "CAR": 89.0, "TRUCK": 95.0, "VAN": 84.0, "BIKE": 25.0}
+                )
+            ]
+
+        elif vehicle_type == VehicleTypeEnum.TRUCK:
+            return [
+                RawRouteCandidate(
+                    label="Route A (Heavy Freight Bypass & Ring Corridor)",
+                    coordinates=base_coords,
+                    distance_km=base_dist,
+                    duration_min=base_dur,
+                    traffic_level="Low",
+                    traffic_delay_min=1.5,
+                    has_tolls=True,
+                    toll_cost_inr=110.0,
+                    road_quality="Good",
+                    road_type="bypass",
+                    vehicle_suitability={"TRUCK": 99.0, "BUS": 92.0, "CAR": 88.0, "VAN": 90.0, "BIKE": 15.0},
+                    steps=[
+                        TurnStep(instruction="Enter heavy commercial freight bypass corridor (No residential weight restriction)", distance_m=round(base_dist * 600), duration_s=round(base_dur * 35), road_name="Freight Bypass"),
+                        TurnStep(instruction="Maintain steady cruising speed along outer freight ring road", distance_m=round(base_dist * 300), duration_s=round(base_dur * 20), road_name="Ring Road"),
+                        TurnStep(instruction="Take wide commercial industrial exit to destination point", distance_m=round(base_dist * 100), duration_s=round(base_dur * 5), road_name="Industrial Access Link")
+                    ]
+                ),
+                RawRouteCandidate(
+                    label="Route B (National Highway Logistics Link)",
+                    coordinates=sec_coords,
+                    distance_km=sec_dist,
+                    duration_min=sec_dur,
+                    traffic_level="Moderate",
+                    traffic_delay_min=4.2,
+                    has_tolls=True,
+                    toll_cost_inr=85.0,
+                    road_quality="Good",
+                    road_type="highway",
+                    vehicle_suitability={"TRUCK": 93.0, "BUS": 88.0, "CAR": 90.0, "VAN": 87.0, "BIKE": 20.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Commercial Industrial Arterial)",
+                    coordinates=tert_coords,
+                    distance_km=tert_dist,
+                    duration_min=tert_dur,
+                    traffic_level="Moderate",
+                    traffic_delay_min=6.5,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Moderate",
+                    road_type="urban",
+                    vehicle_suitability={"TRUCK": 75.0, "BUS": 78.0, "CAR": 86.0, "VAN": 89.0, "BIKE": 50.0}
+                )
+            ]
+
+        elif vehicle_type == VehicleTypeEnum.VAN:
+            return [
+                RawRouteCandidate(
+                    label="Route A (Urban Delivery Arterial - Curbside Optimal)",
+                    coordinates=base_coords,
+                    distance_km=base_dist,
+                    duration_min=base_dur,
+                    traffic_level="Low",
+                    traffic_delay_min=1.2,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"VAN": 98.5, "CAR": 94.0, "BIKE": 86.0, "BUS": 80.0, "TRUCK": 75.0},
+                    steps=[
+                        TurnStep(instruction="Follow commercial parcel delivery corridor with wide curbside loading", distance_m=round(base_dist * 500), duration_s=round(base_dur * 30), road_name="Commercial Avenue"),
+                        TurnStep(instruction="Proceed through urban distribution connector", distance_m=round(base_dist * 350), duration_s=round(base_dur * 20), road_name="Distribution Street"),
+                        TurnStep(instruction="Arrive at delivery stop with dedicated van pull-in space", distance_m=round(base_dist * 150), duration_s=round(base_dur * 10), road_name="Service Lane")
+                    ]
+                ),
+                RawRouteCandidate(
+                    label="Route B (Commercial Distribution Avenue)",
+                    coordinates=sec_coords,
+                    distance_km=sec_dist,
+                    duration_min=sec_dur,
+                    traffic_level="Moderate",
+                    traffic_delay_min=2.8,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"VAN": 92.0, "CAR": 92.0, "BIKE": 88.0, "TRUCK": 80.0, "BUS": 82.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Secondary Metro Access Link)",
+                    coordinates=tert_coords,
+                    distance_km=tert_dist,
+                    duration_min=tert_dur,
+                    traffic_level="Low",
+                    traffic_delay_min=1.6,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="urban",
+                    vehicle_suitability={"VAN": 89.0, "CAR": 87.0, "BIKE": 94.0, "TRUCK": 70.0, "BUS": 65.0}
                 )
             ]
 
         else:
-            # Default CAR / EV / VAN
+            # Default CAR & EV
             return [
                 RawRouteCandidate(
-                    label="Route A (Fastest Highway / Primary)",
+                    label="Route A (Fastest Highway / Primary Arterial)",
                     coordinates=base_coords,
                     distance_km=base_dist,
                     duration_min=base_dur,
@@ -337,10 +443,15 @@ class OSRMProvider(BaseRoutingProvider):
                     toll_cost_inr=50.0 if base_dist > 15.0 else 0.0,
                     road_quality="Good",
                     road_type="highway",
-                    vehicle_suitability={"CAR": 98.0, "EV": 92.0, "VAN": 94.0, "TRUCK": 85.0}
+                    vehicle_suitability={"CAR": 98.5, "EV": 94.0, "VAN": 92.0, "TRUCK": 82.0, "BIKE": 35.0},
+                    steps=[
+                        TurnStep(instruction="Take main city arterial towards flyover ramp", distance_m=round(base_dist * 500), duration_s=round(base_dur * 30), road_name="Main Arterial"),
+                        TurnStep(instruction="Continue on express vehicular corridor", distance_m=round(base_dist * 350), duration_s=round(base_dur * 20), road_name="Flyover Expressway"),
+                        TurnStep(instruction="Take ramp exit towards destination point", distance_m=round(base_dist * 150), duration_s=round(base_dur * 10), road_name="Destination Link")
+                    ]
                 ),
                 RawRouteCandidate(
-                    label="Route B (City Arterial - Toll Free)",
+                    label="Route B (City Center Arterial - Toll Free)",
                     coordinates=sec_coords,
                     distance_km=sec_dist,
                     duration_min=sec_dur,
@@ -350,10 +461,10 @@ class OSRMProvider(BaseRoutingProvider):
                     toll_cost_inr=0.0,
                     road_quality="Good",
                     road_type="arterial",
-                    vehicle_suitability={"CAR": 94.0, "EV": 96.0, "VAN": 90.0, "TRUCK": 75.0}
+                    vehicle_suitability={"CAR": 94.0, "EV": 96.0, "VAN": 90.0, "TRUCK": 75.0, "BIKE": 70.0}
                 ),
                 RawRouteCandidate(
-                    label="Route C (Bypass Link)",
+                    label="Route C (Inner Ring Road Bypass)",
                     coordinates=tert_coords,
                     distance_km=tert_dist,
                     duration_min=tert_dur,
@@ -363,7 +474,7 @@ class OSRMProvider(BaseRoutingProvider):
                     toll_cost_inr=0.0,
                     road_quality="Good",
                     road_type="bypass",
-                    vehicle_suitability={"CAR": 90.0, "EV": 88.0, "VAN": 92.0, "TRUCK": 90.0}
+                    vehicle_suitability={"CAR": 91.0, "EV": 89.0, "VAN": 92.0, "TRUCK": 88.0, "BIKE": 40.0}
                 )
             ]
 
@@ -400,7 +511,7 @@ class SimulatedFallbackRoutingProvider(BaseRoutingProvider):
         base_dist = haversine_distance(origin.lat, origin.lng, destination.lat, destination.lng) * 1.3
         base_dist = max(base_dist, 2.0)
 
-        if vehicle_type in [VehicleTypeEnum.TRUCK, VehicleTypeEnum.BUS]:
+        if vehicle_type == VehicleTypeEnum.TRUCK:
             # Outer Ring Bypass (Freight optimal)
             coords_a = self._generate_polyline(origin, destination, curvature=0.052, points=40)
             coords_b = self._generate_polyline(origin, destination, curvature=0.026, points=35)
@@ -410,87 +521,181 @@ class SimulatedFallbackRoutingProvider(BaseRoutingProvider):
                     label="Route A (Outer Ring Road / Freight Bypass Corridor)",
                     coordinates=coords_a,
                     distance_km=round(base_dist * 1.15, 2),
-                    duration_min=round((base_dist * 1.15 / 52.0) * 60.0, 1),
+                    duration_min=round((base_dist * 1.15 / 48.0) * 60.0, 1),
                     traffic_level="Low",
                     traffic_delay_min=1.2,
                     has_tolls=True,
                     toll_cost_inr=140.0,
                     road_quality="Good",
                     road_type="bypass",
-                    vehicle_suitability={"TRUCK": 98.0, "BUS": 97.0, "CAR": 88.0, "BIKE": 25.0}
+                    vehicle_suitability={"TRUCK": 99.0, "BUS": 92.0, "CAR": 88.0, "BIKE": 15.0}
                 ),
                 RawRouteCandidate(
                     label="Route B (National Highway Freight Link)",
                     coordinates=coords_b,
                     distance_km=round(base_dist * 1.08, 2),
-                    duration_min=round((base_dist * 1.08 / 45.0) * 60.0, 1),
+                    duration_min=round((base_dist * 1.08 / 42.0) * 60.0, 1),
                     traffic_level="Moderate",
                     traffic_delay_min=5.5,
                     has_tolls=True,
                     toll_cost_inr=95.0,
                     road_quality="Good",
                     road_type="highway",
-                    vehicle_suitability={"TRUCK": 88.0, "BUS": 86.0, "CAR": 92.0, "BIKE": 30.0}
+                    vehicle_suitability={"TRUCK": 93.0, "BUS": 86.0, "CAR": 90.0, "BIKE": 20.0}
                 ),
                 RawRouteCandidate(
-                    label="Route C (Inner City Arterial - Low Clearance / Restricted)",
+                    label="Route C (Commercial Industrial Arterial)",
                     coordinates=coords_c,
                     distance_km=round(base_dist * 0.98, 2),
-                    duration_min=round((base_dist * 0.98 / 24.0) * 60.0 + 16.0, 1),
+                    duration_min=round((base_dist * 0.98 / 26.0) * 60.0 + 12.0, 1),
                     traffic_level="High",
-                    traffic_delay_min=16.0,
+                    traffic_delay_min=12.0,
                     has_tolls=False,
                     toll_cost_inr=0.0,
                     road_quality="Moderate",
                     road_type="urban",
-                    vehicle_suitability={"TRUCK": 30.0, "BUS": 32.0, "CAR": 82.0, "BIKE": 95.0}
+                    vehicle_suitability={"TRUCK": 75.0, "BUS": 78.0, "CAR": 84.0, "BIKE": 50.0}
                 )
             ]
 
-        elif vehicle_type == VehicleTypeEnum.BIKE:
-            # Direct Urban Shortcut (Bike optimal, no tolls, low traffic delay)
-            coords_a = self._generate_polyline(origin, destination, curvature=0.006, points=35)
-            coords_b = self._generate_polyline(origin, destination, curvature=-0.024, points=36)
-            coords_c = self._generate_polyline(origin, destination, curvature=0.055, points=40)
+        elif vehicle_type == VehicleTypeEnum.BUS:
+            # Transit Boulevards (High clearance, wide passenger corridors)
+            coords_a = self._generate_polyline(origin, destination, curvature=0.018, points=38)
+            coords_b = self._generate_polyline(origin, destination, curvature=-0.022, points=36)
+            coords_c = self._generate_polyline(origin, destination, curvature=0.045, points=40)
             return [
                 RawRouteCandidate(
-                    label="Route A (Direct Urban Short-Cut / Bike Priority)",
+                    label="Route A (Transit Boulevard & High-Clearance Arterial)",
                     coordinates=coords_a,
-                    distance_km=round(base_dist * 0.92, 2),
-                    duration_min=round((base_dist * 0.92 / 32.0) * 60.0, 1),
+                    distance_km=round(base_dist * 1.04, 2),
+                    duration_min=round((base_dist * 1.04 / 36.0) * 60.0, 1),
                     traffic_level="Low",
-                    traffic_delay_min=0.8,
-                    has_tolls=False,
-                    toll_cost_inr=0.0,
-                    road_quality="Good",
-                    road_type="urban",
-                    vehicle_suitability={"BIKE": 99.0, "CAR": 82.0, "TRUCK": 35.0}
-                ),
-                RawRouteCandidate(
-                    label="Route B (Scenic Green Boulevard / Low-Traffic Link)",
-                    coordinates=coords_b,
-                    distance_km=round(base_dist * 1.02, 2),
-                    duration_min=round((base_dist * 1.02 / 34.0) * 60.0, 1),
-                    traffic_level="Low",
-                    traffic_delay_min=0.5,
+                    traffic_delay_min=1.5,
                     has_tolls=False,
                     toll_cost_inr=0.0,
                     road_quality="Good",
                     road_type="arterial",
-                    vehicle_suitability={"BIKE": 94.0, "CAR": 89.0, "TRUCK": 45.0}
+                    vehicle_suitability={"BUS": 99.0, "CAR": 92.0, "TRUCK": 88.0, "BIKE": 35.0}
                 ),
                 RawRouteCandidate(
-                    label="Route C (Outer Expressway Detour - 2-Wheeler Restricted)",
+                    label="Route B (Central Bus Corridor - Wide Multi-Lane)",
+                    coordinates=coords_b,
+                    distance_km=round(base_dist * 1.08, 2),
+                    duration_min=round((base_dist * 1.08 / 32.0) * 60.0, 1),
+                    traffic_level="Moderate",
+                    traffic_delay_min=3.0,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"BUS": 94.0, "CAR": 90.0, "TRUCK": 82.0, "BIKE": 40.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Expressway Transit Connector)",
                     coordinates=coords_c,
-                    distance_km=round(base_dist * 1.25, 2),
-                    duration_min=round((base_dist * 1.25 / 38.0) * 60.0 + 8.0, 1),
-                    traffic_level="High",
-                    traffic_delay_min=8.0,
+                    distance_km=round(base_dist * 1.18, 2),
+                    duration_min=round((base_dist * 1.18 / 48.0) * 60.0, 1),
+                    traffic_level="Low",
+                    traffic_delay_min=1.0,
                     has_tolls=True,
-                    toll_cost_inr=40.0,
+                    toll_cost_inr=65.0,
                     road_quality="Good",
                     road_type="highway",
-                    vehicle_suitability={"BIKE": 25.0, "CAR": 95.0, "TRUCK": 96.0}
+                    vehicle_suitability={"BUS": 88.0, "CAR": 94.0, "TRUCK": 92.0, "BIKE": 20.0}
+                )
+            ]
+
+        elif vehicle_type == VehicleTypeEnum.VAN:
+            # Commercial parcel delivery corridors
+            coords_a = self._generate_polyline(origin, destination, curvature=0.015, points=36)
+            coords_b = self._generate_polyline(origin, destination, curvature=-0.018, points=34)
+            coords_c = self._generate_polyline(origin, destination, curvature=0.035, points=38)
+            return [
+                RawRouteCandidate(
+                    label="Route A (Urban Delivery Arterial - Curbside Optimal)",
+                    coordinates=coords_a,
+                    distance_km=round(base_dist * 1.0, 2),
+                    duration_min=round((base_dist / 40.0) * 60.0, 1),
+                    traffic_level="Low",
+                    traffic_delay_min=1.2,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"VAN": 98.5, "CAR": 94.0, "BIKE": 86.0, "TRUCK": 78.0}
+                ),
+                RawRouteCandidate(
+                    label="Route B (Commercial Distribution Avenue)",
+                    coordinates=coords_b,
+                    distance_km=round(base_dist * 1.05, 2),
+                    duration_min=round((base_dist * 1.05 / 35.0) * 60.0, 1),
+                    traffic_level="Moderate",
+                    traffic_delay_min=2.5,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="arterial",
+                    vehicle_suitability={"VAN": 93.0, "CAR": 91.0, "BIKE": 88.0, "TRUCK": 80.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Secondary Metro Access Link)",
+                    coordinates=coords_c,
+                    distance_km=round(base_dist * 1.12, 2),
+                    duration_min=round((base_dist * 1.12 / 32.0) * 60.0, 1),
+                    traffic_level="Low",
+                    traffic_delay_min=1.0,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="urban",
+                    vehicle_suitability={"VAN": 90.0, "CAR": 87.0, "BIKE": 94.0, "TRUCK": 70.0}
+                )
+            ]
+
+        elif vehicle_type == VehicleTypeEnum.BIKE:
+            # Direct Urban Shortcut (Bike optimal, small roads, alleys, cuts)
+            coords_a = self._generate_polyline(origin, destination, curvature=0.005, points=35)
+            coords_b = self._generate_polyline(origin, destination, curvature=-0.015, points=36)
+            coords_c = self._generate_polyline(origin, destination, curvature=0.040, points=38)
+            return [
+                RawRouteCandidate(
+                    label="Route A (Direct Small Road & Alley Shortcut - Bike Priority)",
+                    coordinates=coords_a,
+                    distance_km=round(base_dist * 0.90, 2),
+                    duration_min=round((base_dist * 0.90 / 22.0) * 60.0, 1),
+                    traffic_level="Low",
+                    traffic_delay_min=0.3,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="urban_narrow",
+                    vehicle_suitability={"BIKE": 99.5, "CAR": 60.0, "VAN": 52.0, "BUS": 20.0, "TRUCK": 15.0}
+                ),
+                RawRouteCandidate(
+                    label="Route B (Neighborhood Green Corridor - Small Streets)",
+                    coordinates=coords_b,
+                    distance_km=round(base_dist * 0.98, 2),
+                    duration_min=round((base_dist * 0.98 / 24.0) * 60.0, 1),
+                    traffic_level="Low",
+                    traffic_delay_min=0.2,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="residential",
+                    vehicle_suitability={"BIKE": 97.0, "CAR": 72.0, "VAN": 65.0, "BUS": 25.0, "TRUCK": 20.0}
+                ),
+                RawRouteCandidate(
+                    label="Route C (Secondary Street Link - Mixed Flow)",
+                    coordinates=coords_c,
+                    distance_km=round(base_dist * 1.05, 2),
+                    duration_min=round((base_dist * 1.05 / 26.0) * 60.0, 1),
+                    traffic_level="Moderate",
+                    traffic_delay_min=1.2,
+                    has_tolls=False,
+                    toll_cost_inr=0.0,
+                    road_quality="Good",
+                    road_type="urban",
+                    vehicle_suitability={"BIKE": 92.0, "CAR": 85.0, "VAN": 80.0, "BUS": 40.0, "TRUCK": 30.0}
                 )
             ]
 
@@ -557,7 +762,7 @@ class SimulatedFallbackRoutingProvider(BaseRoutingProvider):
                     toll_cost_inr=60.0,
                     road_quality="Good",
                     road_type="highway",
-                    vehicle_suitability={"CAR": 97.0, "EV": 88.0, "TRUCK": 88.0, "BIKE": 25.0}
+                    vehicle_suitability={"CAR": 98.0, "EV": 88.0, "TRUCK": 88.0, "BIKE": 25.0}
                 ),
                 RawRouteCandidate(
                     label="Route B (City Arterial Avenue - Toll Free)",
@@ -570,7 +775,7 @@ class SimulatedFallbackRoutingProvider(BaseRoutingProvider):
                     toll_cost_inr=0.0,
                     road_quality="Good",
                     road_type="arterial",
-                    vehicle_suitability={"CAR": 92.0, "EV": 94.0, "BIKE": 90.0, "TRUCK": 75.0}
+                    vehicle_suitability={"CAR": 94.0, "EV": 94.0, "BIKE": 88.0, "TRUCK": 75.0}
                 ),
                 RawRouteCandidate(
                     label="Route C (Outer Ring Road Bypass)",
@@ -583,7 +788,7 @@ class SimulatedFallbackRoutingProvider(BaseRoutingProvider):
                     toll_cost_inr=80.0,
                     road_quality="Good",
                     road_type="bypass",
-                    vehicle_suitability={"CAR": 88.0, "TRUCK": 98.0, "VAN": 91.0, "BIKE": 25.0}
+                    vehicle_suitability={"CAR": 90.0, "TRUCK": 98.0, "VAN": 91.0, "BIKE": 25.0}
                 )
             ]
 

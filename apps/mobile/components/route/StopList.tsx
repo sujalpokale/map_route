@@ -61,7 +61,7 @@ export const StopList: React.FC<StopListProps> = ({
                 {stop.address}
               </Text>
 
-              {/* Time Window & Package Weight */}
+              {/* Time Window */}
               <View style={styles.metaRow}>
                 {stop.time_window_start && stop.time_window_end ? (
                   <View style={styles.timeTag}>
@@ -70,10 +70,6 @@ export const StopList: React.FC<StopListProps> = ({
                       {stop.time_window_start} – {stop.time_window_end}
                     </Text>
                   </View>
-                ) : null}
-
-                {stop.package_weight_kg ? (
-                  <Text style={styles.weightText}>{stop.package_weight_kg} kg</Text>
                 ) : null}
               </View>
             </View>

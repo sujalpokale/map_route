@@ -138,6 +138,34 @@ class OptimizeStopsResponse(BaseModel):
     total_payload_kg: float
     polyline_coordinates: List[List[float]]
     summary: str
+    vehicle_type: Optional[str] = "VAN"
+    road_type_summary: Optional[str] = None
+    road_suitability_score: Optional[float] = 95.0
+    average_speed_kmh: Optional[float] = None
+    vehicle_road_guidance: Optional[str] = None
+
+
+# Single Location Road & Vehicle Accessibility Profile
+class VehicleAccessibilityDetail(BaseModel):
+    suitability_score: float = Field(..., ge=0, le=100)
+    status: str  # Optimal, Feasible, Caution, Restricted
+    recommended_road_type: str
+    guidance: str
+    can_access_small_alleys: bool
+    requires_clearance_m: float
+
+
+class LocationRoadProfileResponse(BaseModel):
+    lat: float
+    lng: float
+    address: str
+    primary_road_classification: str
+    road_width_m: float
+    estimated_speed_limit_kmh: int
+    traffic_density: str
+    suitability_by_vehicle: Dict[str, VehicleAccessibilityDetail]
+    best_vehicle_for_location: str
+    summary: str
 
 
 # ML ETA & Fuel Prediction

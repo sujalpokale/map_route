@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,7 +6,7 @@ import {
   ViewStyle,
   Platform,
 } from 'react-native';
-import { Plus, Minus, Layers, Crosshair } from 'lucide-react-native';
+import { Plus, Minus, Layers, Crosshair, Compass } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { GeoPoint, CandidateRoute, StopItem } from '@/types';
 
@@ -32,6 +32,7 @@ export interface MapViewAbstractionProps {
   style?: ViewStyle;
   showControls?: boolean;
   interactive?: boolean;
+  focusedLocation?: { latitude: number; longitude: number; zoom?: number } | null;
 }
 
 export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
@@ -46,46 +47,47 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   style,
   showControls = true,
   interactive = true,
+  focusedLocation,
 }) => {
   const webViewRef = useRef<any>(null);
+  const isMapReadyRef = useRef<boolean>(false);
   const [mapLayer, setMapLayer] = useState<'standard' | 'satellite' | 'dark'>('standard');
 
   const centerLat = currentLocation?.latitude || origin?.lat || 18.5204;
   const centerLng = currentLocation?.longitude || origin?.lng || 73.8567;
 
-  useEffect(() => {
-    if (currentLocation?.latitude && currentLocation?.longitude) {
-      webViewRef.current?.injectJavaScript?.(
-        `window.updateUserLocation && window.updateUserLocation(${currentLocation.latitude}, ${currentLocation.longitude}, ${currentLocation.heading || 0}); true;`
-      );
-    }
-  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.heading]);
-
-  // Build the complete Leaflet HTML template with Real Google-style / CartoDB / Satellite tiles
-  const generateMapHtml = () => {
-    const rawCoords = activeRoute?.coordinates || [];
-
-    const polylineJson = JSON.stringify(rawCoords);
-    const originJson = JSON.stringify(origin || null);
-    const destJson = JSON.stringify(destination || null);
-    const stopsJson = JSON.stringify(stops || []);
-    const currLocJson = JSON.stringify(
-      currentLocation
-        ? { lat: currentLocation.latitude, lng: currentLocation.longitude, heading: currentLocation.heading || 0 }
-        : null
-    );
-
+  // Build the static HTML template ONCE to prevent webview reloads when props change
+  const staticHtml = useMemo(() => {
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #202124; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; background: #202124; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #202124;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      background: #202124;
+      touch-action: none;
+    }
     .leaflet-control-attribution, .leaflet-control-zoom { display: none !important; }
     
     /* Authentic Google Maps Marker Pins */
@@ -93,16 +95,17 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       display: flex;
       flex-direction: column;
       align-items: center;
+      cursor: pointer;
     }
     .marker-pin {
-      width: 28px;
-      height: 28px;
+      width: 32px;
+      height: 32px;
       border-radius: 50% 50% 50% 0;
       transform: rotate(-45deg);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
       border: 2px solid #FFFFFF;
     }
     .marker-pin.origin {
@@ -113,27 +116,26 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     }
     .marker-pin.stop {
       background: #1A73E8;
-      width: 22px;
-      height: 22px;
     }
-    .marker-inner-dot {
-      width: 7px;
-      height: 7px;
-      background: #FFFFFF;
-      border-radius: 50%;
+    .marker-text {
       transform: rotate(45deg);
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+      line-height: 1;
     }
     .marker-label {
       background: #303134;
       color: #E8EAED;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       padding: 3px 8px;
       border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
       margin-top: 4px;
       white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.6);
     }
 
     /* Google Maps Live GPS Blue Puck */
@@ -170,9 +172,16 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       0% { transform: scale(0.6); opacity: 1; }
       100% { transform: scale(1.6); opacity: 0; }
     }
+    body.theme-dark .leaflet-tile-pane {
+      filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(88%);
+    }
+    body.theme-standard .leaflet-tile-pane,
+    body.theme-satellite .leaflet-tile-pane {
+      filter: none;
+    }
   </style>
 </head>
-<body>
+<body class="theme-standard">
   <div id="map"></div>
   <script>
     var map;
@@ -180,69 +189,87 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     var routeLine;
     var routeGlowLine;
     var markersGroup;
+    var activeCoords = [];
+    var originData = null;
+    var destData = null;
+    var stopsData = [];
+    var currLocData = null;
+    var currentTheme = 'standard';
+    var gpsMarker = null;
+    var userInteracted = false;
+    var autoFollowGps = true;
+    var lastFittedRouteKey = '';
 
     var tileUrls = {
       standard: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
       satellite: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-      dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      dark: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
     };
 
-    var activeCoords = ${polylineJson};
-    var originData = ${originJson};
-    var destData = ${destJson};
-    var stopsData = ${stopsJson};
-    var currLocData = ${currLocJson};
-    var currentTheme = '${mapLayer}';
-    var gpsMarker = null;
+    function postAppMessage(payload) {
+      var str = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(str);
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(str, '*');
+      }
+    }
 
     function initMap() {
       try {
         if (map) return;
         map = L.map('map', {
           center: [${centerLat}, ${centerLng}],
-          zoom: ${(activeRoute?.coordinates && activeRoute.coordinates.length > 1) ? 13 : 15},
+          zoom: 14,
           zoomControl: false,
-          attributionControl: false
+          attributionControl: false,
+          preferCanvas: true,
+          tap: false,
+          touchZoom: true,
+          dragging: true
         });
 
-        var subdoms = (currentTheme === 'dark') ? 'abcd' : ['0', '1', '2', '3'];
         currentTileLayer = L.tileLayer(tileUrls[currentTheme] || tileUrls.standard, {
           maxZoom: 20,
-          subdomains: subdoms
+          subdomains: ['0', '1', '2', '3']
         }).addTo(map);
 
         markersGroup = L.layerGroup().addTo(map);
 
+        // Track when user manually interacts (pinch zoom, drag, pan)
+        map.on('movestart dragstart zoomstart touchstart pointerdown', function(e) {
+          userInteracted = true;
+          autoFollowGps = false;
+        });
+
         map.on('click', function(e) {
-          var payload = JSON.stringify({
+          postAppMessage({
             type: 'MAP_CLICK',
             latitude: e.latlng.lat,
             longitude: e.latlng.lng
           });
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(payload);
-          } else if (window.parent) {
-            window.parent.postMessage(payload, '*');
-          }
         });
 
-        renderScene();
-        setTimeout(function() { if (map) map.invalidateSize(); }, 200);
+        setTimeout(function() {
+          if (map) map.invalidateSize();
+          postAppMessage({ type: 'MAP_READY' });
+        }, 100);
       } catch (err) {
         console.error('initMap error:', err);
       }
     }
 
-    function renderScene() {
+    function renderScene(shouldFit) {
       if (!markersGroup || !map) return;
       markersGroup.clearLayers();
 
-      // Render Google Maps Style Route Lines
+      var allPoints = [];
+
+      // Route Polylines
       if (activeCoords && activeCoords.length > 1) {
         if (routeGlowLine) map.removeLayer(routeGlowLine);
         if (routeLine) map.removeLayer(routeLine);
 
-        // Google Blue Soft Casing
         routeGlowLine = L.polyline(activeCoords, {
           color: '#174EA6',
           weight: 8,
@@ -251,7 +278,6 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           lineJoin: 'round'
         }).addTo(map);
 
-        // Google Navigation Primary Blue Corridor
         routeLine = L.polyline(activeCoords, {
           color: '#1A73E8',
           weight: 5.5,
@@ -260,42 +286,66 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           lineJoin: 'round'
         }).addTo(map);
 
-        var bounds = L.latLngBounds(activeCoords);
-        map.fitBounds(bounds, { padding: [60, 40], maxZoom: 16 });
+        // Fit bounds ONLY when route key changes AND user hasn't zoomed in manually, or if explicit shouldFit is true
+        var currentRouteKey = activeCoords.length + '_' + activeCoords[0][0] + '_' + activeCoords[activeCoords.length - 1][0];
+        if (shouldFit || (currentRouteKey !== lastFittedRouteKey && !userInteracted)) {
+          lastFittedRouteKey = currentRouteKey;
+          var bounds = L.latLngBounds(activeCoords);
+          map.fitBounds(bounds, { padding: [50, 40], maxZoom: 16 });
+        }
+      } else {
+        if (routeGlowLine) { map.removeLayer(routeGlowLine); routeGlowLine = null; }
+        if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
       }
 
-      // Origin Pin
+      // Origin Pin (Green 'A')
       if (originData && originData.lat) {
+        allPoints.push([originData.lat, originData.lng]);
         var originIcon = L.divIcon({
           className: 'custom-div-icon',
-          html: '<div class="custom-marker"><div class="marker-pin origin"><div class="marker-inner-dot"></div></div><div class="marker-label">' + (originData.name || 'Start') + '</div></div>',
-          iconSize: [30, 52],
-          iconAnchor: [15, 30]
+          html: '<div class="custom-marker"><div class="marker-pin origin"><div class="marker-text">A</div></div><div class="marker-label">' + (originData.name || 'Start Hub (A)') + '</div></div>',
+          iconSize: [32, 54],
+          iconAnchor: [16, 32]
         });
-        L.marker([originData.lat, originData.lng], { icon: originIcon }).addTo(markersGroup);
+        var origMarker = L.marker([originData.lat, originData.lng], { icon: originIcon }).addTo(markersGroup);
+        origMarker.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          postAppMessage({ type: 'MARKER_CLICK', target: 'origin', lat: originData.lat, lng: originData.lng });
+        });
       }
 
-      // Destination Pin
-      if (destData && destData.lat) {
-        var destIcon = L.divIcon({
-          className: 'custom-div-icon',
-          html: '<div class="custom-marker"><div class="marker-pin destination"><div class="marker-inner-dot"></div></div><div class="marker-label">' + (destData.name || 'Destination') + '</div></div>',
-          iconSize: [30, 52],
-          iconAnchor: [15, 30]
-        });
-        L.marker([destData.lat, destData.lng], { icon: destIcon }).addTo(markersGroup);
-      }
-
-      // Intermediate Multi-Stop Pins
+      // Intermediate Multi-Stop Pins (Blue '1', '2', '3'...)
       if (stopsData && stopsData.length) {
         stopsData.forEach(function(s, idx) {
+          if (!s.lat || !s.lng) return;
+          allPoints.push([s.lat, s.lng]);
           var stopIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: '<div class="custom-marker"><div class="marker-pin stop"><div class="marker-inner-dot"></div></div><div class="marker-label">Stop ' + (idx + 1) + '</div></div>',
-            iconSize: [24, 42],
-            iconAnchor: [12, 24]
+            html: '<div class="custom-marker"><div class="marker-pin stop"><div class="marker-text">' + (idx + 1) + '</div></div><div class="marker-label">' + (idx + 1) + '. ' + (s.name || ('Drop ' + (idx + 1))) + '</div></div>',
+            iconSize: [32, 54],
+            iconAnchor: [16, 32]
           });
-          L.marker([s.lat, s.lng], { icon: stopIcon }).addTo(markersGroup);
+          var stpMarker = L.marker([s.lat, s.lng], { icon: stopIcon }).addTo(markersGroup);
+          stpMarker.on('click', function(e) {
+            L.DomEvent.stopPropagation(e);
+            postAppMessage({ type: 'MARKER_CLICK', target: 'stop', index: idx, id: s.id, lat: s.lat, lng: s.lng });
+          });
+        });
+      }
+
+      // Destination Pin (Red 'B')
+      if (destData && destData.lat) {
+        allPoints.push([destData.lat, destData.lng]);
+        var destIcon = L.divIcon({
+          className: 'custom-div-icon',
+          html: '<div class="custom-marker"><div class="marker-pin destination"><div class="marker-text">B</div></div><div class="marker-label">' + (destData.name || 'End Point (B)') + '</div></div>',
+          iconSize: [32, 54],
+          iconAnchor: [16, 32]
+        });
+        var dstMarker = L.marker([destData.lat, destData.lng], { icon: destIcon }).addTo(markersGroup);
+        dstMarker.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          postAppMessage({ type: 'MARKER_CLICK', target: 'destination', lat: destData.lat, lng: destData.lng });
         });
       }
 
@@ -309,23 +359,88 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
         });
         gpsMarker = L.marker([currLocData.lat, currLocData.lng], { icon: puckIcon }).addTo(markersGroup);
       }
+
+      // Auto-fit points only on initial load if no route and user hasn't zoomed
+      if (shouldFit && allPoints.length > 0) {
+        if (allPoints.length === 1) {
+          map.setView(allPoints[0], 15);
+        } else {
+          var allBounds = L.latLngBounds(allPoints);
+          map.fitBounds(allBounds, { padding: [50, 40], maxZoom: 16 });
+        }
+      }
     }
 
     window.setMapTheme = function(theme) {
       if (!map) return;
       if (currentTileLayer) map.removeLayer(currentTileLayer);
       currentTheme = theme;
-      var subdoms = (theme === 'dark') ? 'abcd' : ['0', '1', '2', '3'];
-      currentTileLayer = L.tileLayer(tileUrls[theme] || tileUrls.standard, { maxZoom: 20, subdomains: subdoms }).addTo(map);
+      document.body.className = 'theme-' + theme;
+      currentTileLayer = L.tileLayer(tileUrls[theme] || tileUrls.standard, {
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3']
+      }).addTo(map);
     };
 
-    window.zoomIn = function() { if (map) map.zoomIn(); };
-    window.zoomOut = function() { if (map) map.zoomOut(); };
+    window.zoomIn = function() {
+      userInteracted = true;
+      autoFollowGps = false;
+      if (map) map.zoomIn();
+    };
+
+    window.zoomOut = function() {
+      userInteracted = true;
+      autoFollowGps = false;
+      if (map) map.zoomOut();
+    };
+
+    window.fitAllPoints = function() {
+      userInteracted = false;
+      autoFollowGps = false;
+      if (!map) return;
+      if (activeCoords && activeCoords.length > 1) {
+        map.fitBounds(L.latLngBounds(activeCoords), { padding: [50, 40], maxZoom: 16 });
+        return;
+      }
+      var pts = [];
+      if (originData && originData.lat) pts.push([originData.lat, originData.lng]);
+      if (stopsData && stopsData.length) {
+        stopsData.forEach(function(s) { if (s.lat && s.lng) pts.push([s.lat, s.lng]); });
+      }
+      if (destData && destData.lat) pts.push([destData.lat, destData.lng]);
+
+      if (pts.length > 1) {
+        map.fitBounds(L.latLngBounds(pts), { padding: [50, 40], maxZoom: 16 });
+      } else if (pts.length === 1) {
+        map.setView(pts[0], 16);
+      }
+    };
+
+    window.focusLocation = function(lat, lng, zoom) {
+      userInteracted = true;
+      autoFollowGps = false;
+      if (map) {
+        map.flyTo([lat, lng], zoom || 16, { animate: true, duration: 0.8 });
+      }
+    };
+
     window.recenter = function(lat, lng) {
-      if (map) map.flyTo([lat, lng], 15, { animate: true, duration: 1 });
+      userInteracted = false;
+      autoFollowGps = true;
+      if (map) map.flyTo([lat, lng], 16, { animate: true, duration: 0.8 });
+    };
+
+    window.updateRouteData = function(data, forceFit) {
+      if (!map || !data) return;
+      activeCoords = data.coords || [];
+      originData = data.origin;
+      destData = data.dest;
+      stopsData = data.stops || [];
+      renderScene(forceFit === true);
     };
 
     window.updateUserLocation = function(lat, lng, heading) {
+      currLocData = { lat: lat, lng: lng, heading: heading };
       if (gpsMarker) {
         gpsMarker.setLatLng([lat, lng]);
       } else if (markersGroup) {
@@ -337,13 +452,15 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
         });
         gpsMarker = L.marker([lat, lng], { icon: puckIcon }).addTo(markersGroup);
       }
-      if (!activeCoords || activeCoords.length <= 1) {
-        if (map) map.setView([lat, lng], 15, { animate: true });
+
+      // ONLY gently follow live GPS if the user is NOT actively zooming / panning elsewhere
+      if (autoFollowGps && !userInteracted && (!activeCoords || activeCoords.length <= 1)) {
+        if (map) map.panTo([lat, lng], { animate: true });
       }
     };
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(initMap, 50);
+      setTimeout(initMap, 30);
     } else {
       document.addEventListener("DOMContentLoaded", initMap);
       window.onload = initMap;
@@ -351,7 +468,55 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   </script>
 </body>
 </html>`;
-  };
+  }, []);
+
+  const webViewSource = useMemo(() => {
+    return { html: staticHtml, baseUrl: 'https://localhost' };
+  }, [staticHtml]);
+
+  const pushRouteData = useCallback((forceFit?: boolean) => {
+    const rawCoords = activeRoute?.coordinates || [];
+    const payload = JSON.stringify({
+      coords: rawCoords,
+      origin: origin || null,
+      dest: destination || null,
+      stops: stops || [],
+    });
+    webViewRef.current?.injectJavaScript?.(
+      `window.updateRouteData && window.updateRouteData(${payload}, ${forceFit ? 'true' : 'false'}); true;`
+    );
+  }, [activeRoute?.coordinates, origin, destination, stops]);
+
+  const pushUserLocation = useCallback(() => {
+    if (currentLocation?.latitude && currentLocation?.longitude) {
+      webViewRef.current?.injectJavaScript?.(
+        `window.updateUserLocation && window.updateUserLocation(${currentLocation.latitude}, ${currentLocation.longitude}, ${currentLocation.heading || 0}); true;`
+      );
+    }
+  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.heading]);
+
+  // Sync focusedLocation
+  useEffect(() => {
+    if (focusedLocation?.latitude && focusedLocation?.longitude) {
+      webViewRef.current?.injectJavaScript?.(
+        `window.focusLocation && window.focusLocation(${focusedLocation.latitude}, ${focusedLocation.longitude}, ${focusedLocation.zoom || 16}); true;`
+      );
+    }
+  }, [focusedLocation?.latitude, focusedLocation?.longitude, focusedLocation?.zoom]);
+
+  // Sync user location via JS injection without reloading the map
+  useEffect(() => {
+    if (isMapReadyRef.current) {
+      pushUserLocation();
+    }
+  }, [pushUserLocation]);
+
+  // Sync route & stops data via JS injection without reloading the map
+  useEffect(() => {
+    if (isMapReadyRef.current) {
+      pushRouteData();
+    }
+  }, [pushRouteData]);
 
   const handleZoomIn = () => {
     webViewRef.current?.injectJavaScript?.('window.zoomIn && window.zoomIn(); true;');
@@ -359,6 +524,10 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
 
   const handleZoomOut = () => {
     webViewRef.current?.injectJavaScript?.('window.zoomOut && window.zoomOut(); true;');
+  };
+
+  const handleFitAll = () => {
+    webViewRef.current?.injectJavaScript?.('window.fitAllPoints && window.fitAllPoints(); true;');
   };
 
   const handleToggleLayer = () => {
@@ -379,7 +548,12 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       const data = typeof event.nativeEvent.data === 'string'
         ? JSON.parse(event.nativeEvent.data)
         : event.nativeEvent.data;
-      if (data?.type === 'MAP_CLICK' && onMapPress) {
+
+      if (data?.type === 'MAP_READY') {
+        isMapReadyRef.current = true;
+        pushRouteData(true);
+        pushUserLocation();
+      } else if (data?.type === 'MAP_CLICK' && onMapPress) {
         onMapPress({ latitude: data.latitude, longitude: data.longitude });
       }
     } catch {
@@ -392,7 +566,11 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       const handleWebMsg = (e: MessageEvent) => {
         try {
           const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-          if (data?.type === 'MAP_CLICK' && onMapPress) {
+          if (data?.type === 'MAP_READY') {
+            isMapReadyRef.current = true;
+            pushRouteData(true);
+            pushUserLocation();
+          } else if (data?.type === 'MAP_CLICK' && onMapPress) {
             onMapPress({ latitude: data.latitude, longitude: data.longitude });
           }
         } catch {
@@ -402,16 +580,14 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       window.addEventListener('message', handleWebMsg);
       return () => window.removeEventListener('message', handleWebMsg);
     }
-  }, [onMapPress]);
-
-  const htmlContent = generateMapHtml();
+  }, [onMapPress, pushRouteData, pushUserLocation]);
 
   return (
     <View style={[styles.container, style]}>
       {/* Real Geographic Leaflet / Google Maps Tile Canvas */}
       {Platform.OS === 'web' ? (
         <iframe
-          srcDoc={htmlContent}
+          srcDoc={staticHtml}
           style={{ width: '100%', height: '100%', border: 'none' }}
           title="Google Map Canvas"
         />
@@ -419,7 +595,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
         <NativeWebView
           ref={webViewRef}
           originWhitelist={['*']}
-          source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+          source={webViewSource}
           style={styles.webView}
           scrollEnabled={interactive}
           javaScriptEnabled={true}
@@ -443,6 +619,9 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           <TouchableOpacity style={styles.controlBtn} onPress={handleZoomOut}>
             <Minus size={18} color="#FFFFFF" />
           </TouchableOpacity>
+          <TouchableOpacity style={styles.controlBtn} onPress={handleFitAll}>
+            <Crosshair size={18} color="#8AB4F8" />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.controlBtn, mapLayer !== 'dark' && styles.controlBtnActive]}
             onPress={handleToggleLayer}
@@ -453,7 +632,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
             style={[styles.controlBtn, styles.recenterBtn]}
             onPress={handleRecenterMap}
           >
-            <Crosshair size={18} color={THEME.colors.primaryLight} />
+            <Compass size={18} color={THEME.colors.primaryLight} />
           </TouchableOpacity>
         </View>
       )}

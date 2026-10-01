@@ -33,6 +33,7 @@ interface RouteState {
   setSelectedRouteId: (id: string) => void;
   calculateRoutes: (vehicleType?: string, payloadKg?: number) => Promise<boolean>;
   optimizeMultiStops: () => Promise<boolean>;
+  calculateMultiStopTour: (vehicleType?: string) => Promise<boolean>;
   getSelectedRoute: () => CandidateRoute | null;
 }
 
@@ -222,6 +223,106 @@ const MOCK_CANDIDATE_ROUTES: CandidateRoute[] = [
   },
 ];
 
+function computeHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Solves Multi-Stop TSP using Nearest-Neighbor Greedy Seed + 2-Opt Local Search Optimization
+ * Logic: Start Hub (A) -> Nearest Stop -> Next Nearest Stop -> ... -> End Point (B)
+ */
+export function solveTSPNearestNeighbor2Opt(
+  origin: GeoPoint,
+  stops: StopItem[],
+  destination?: GeoPoint | null
+): StopItem[] {
+  if (stops.length <= 1) return [...stops];
+
+  const unvisited = [...stops];
+  const tour: StopItem[] = [];
+
+  let currentLat = origin.lat;
+  let currentLng = origin.lng;
+
+  // 1. Nearest-Neighbor: from current location (A), always select the closest unvisited stop
+  while (unvisited.length > 0) {
+    let nearestIdx = 0;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < unvisited.length; i++) {
+      const stop = unvisited[i];
+      const dist = computeHaversineDistance(currentLat, currentLng, stop.lat, stop.lng);
+      // Priority weighting: urgent stops get preference
+      const priorityWeight = stop.priority === 3 ? 0.75 : stop.priority === 2 ? 0.9 : 1.0;
+      const score = dist * priorityWeight;
+
+      if (score < minDistance) {
+        minDistance = score;
+        nearestIdx = i;
+      }
+    }
+
+    const nextStop = unvisited.splice(nearestIdx, 1)[0];
+    tour.push(nextStop);
+    currentLat = nextStop.lat;
+    currentLng = nextStop.lng;
+  }
+
+  // 2. 2-Opt TSP Local Search: Swap pairs of edges if total path distance decreases
+  let improved = true;
+  let iterations = 0;
+  const maxIterations = 50;
+
+  const calculateTotalTourDistance = (route: StopItem[]): number => {
+    let d = computeHaversineDistance(origin.lat, origin.lng, route[0].lat, route[0].lng);
+    for (let i = 0; i < route.length - 1; i++) {
+      d += computeHaversineDistance(route[i].lat, route[i].lng, route[i + 1].lat, route[i + 1].lng);
+    }
+    if (destination && destination.lat && destination.lng) {
+      d += computeHaversineDistance(route[route.length - 1].lat, route[route.length - 1].lng, destination.lat, destination.lng);
+    }
+    return d;
+  };
+
+  let bestDistance = calculateTotalTourDistance(tour);
+
+  while (improved && iterations < maxIterations) {
+    improved = false;
+    iterations++;
+
+    for (let i = 0; i < tour.length - 1; i++) {
+      for (let k = i + 1; k < tour.length; k++) {
+        if (tour[i].is_locked || tour[k].is_locked) continue;
+
+        const newTour = [
+          ...tour.slice(0, i),
+          ...tour.slice(i, k + 1).reverse(),
+          ...tour.slice(k + 1),
+        ];
+
+        const newDistance = calculateTotalTourDistance(newTour);
+        if (newDistance < bestDistance - 0.001) {
+          tour.splice(0, tour.length, ...newTour);
+          bestDistance = newDistance;
+          improved = true;
+          break;
+        }
+      }
+      if (improved) break;
+    }
+  }
+
+  return tour;
+}
+
 export const useRouteStore = create<RouteState>((set, get) => ({
   origin: DEFAULT_ORIGIN,
   destination: null as any,
@@ -308,15 +409,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     const dLat = destination.lat;
     const dLng = destination.lng;
 
-    // Approximate distance in km
-    const rad = Math.PI / 180;
-    const dLatRad = (dLat - oLat) * rad;
-    const dLngRad = (dLng - oLng) * rad;
-    const a =
-      Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
-      Math.cos(oLat * rad) * Math.cos(dLat * rad) * Math.sin(dLngRad / 2) * Math.sin(dLngRad / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const baseDistKm = Math.max(1.2, Math.round(6371 * c * 1.25 * 10) / 10);
+    const baseDistKm = Math.max(1.2, Math.round(computeHaversineDistance(oLat, oLng, dLat, dLng) * 1.25 * 10) / 10);
 
     const vType = (vehicleType || 'CAR').toUpperCase();
     let kmpl = 16.5;
@@ -330,14 +423,14 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     if (vType === 'BIKE') {
       kmpl = 45.0;
       fuelPrice = 105.0;
-      tollBase = 0; // Bikes are toll free
+      tollBase = 0;
       speedFactor = 0.88;
       maintPerKm = 0.8;
       driverHourly = 70;
     } else if (vType === 'TRUCK') {
       kmpl = 5.5;
       fuelPrice = 92.5;
-      tollBase = 220; // HCV Toll
+      tollBase = 220;
       speedFactor = 1.25;
       maintPerKm = 6.5;
       driverHourly = 220;
@@ -364,14 +457,6 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     const driver1 = Math.round((durationMin1 / 60) * driverHourly);
     const total1 = fuelCost1 + tollBase + maint1 + driver1;
 
-    const distKm2 = Math.round(baseDistKm * 0.94 * 10) / 10;
-    const durationMin2 = durationMin1 + (vType === 'BIKE' ? 2 : 4);
-    const fuel2 = isElectric ? Number((distKm2 / (kmpl * 1.05)).toFixed(1)) : Number((distKm2 / (kmpl * 1.05)).toFixed(2));
-    const fuelCost2 = Math.round(fuel2 * fuelPrice);
-    const maint2 = Math.round(distKm2 * maintPerKm);
-    const driver2 = Math.round((durationMin2 / 60) * driverHourly);
-    const total2 = fuelCost2 + (tollBase > 0 ? 0 : 0) + maint2 + driver2;
-
     const dynamicCoordinates1: [number, number][] = [
       [oLat, oLng],
       [oLat + (dLat - oLat) * 0.25 + 0.003, oLng + (dLng - oLng) * 0.25 - 0.003],
@@ -379,31 +464,6 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       [oLat + (dLat - oLat) * 0.8 + 0.001, oLng + (dLng - oLng) * 0.8 - 0.001],
       [dLat, dLng],
     ];
-
-    const dynamicCoordinates2: [number, number][] = [
-      [oLat, oLng],
-      [oLat + (dLat - oLat) * 0.35 - 0.004, oLng + (dLng - oLng) * 0.35 + 0.003],
-      [oLat + (dLat - oLat) * 0.7 + 0.003, oLng + (dLng - oLng) * 0.7 - 0.002],
-      [dLat, dLng],
-    ];
-
-    const recReason1 =
-      vType === 'BIKE'
-        ? 'Best for Two-Wheeler: Swift arterial bypass with 0 tolls and minimal stoplights.'
-        : vType === 'TRUCK'
-        ? 'Best for Heavy Commercial Truck: Wide-lane highway corridor avoiding low height barriers and congested bazaars.'
-        : vType === 'BUS'
-        ? 'Best for Passenger Transit: Wide multi-lane transit corridor with smooth grade.'
-        : vType === 'EV'
-        ? 'Best for EV: Smooth constant-speed corridor with maximum regenerative braking efficiency.'
-        : 'Fastest recommended route with optimal traffic flow and road condition.';
-
-    const recReason2 =
-      vType === 'BIKE'
-        ? 'Shortest direct distance through local avenues.'
-        : vType === 'TRUCK'
-        ? 'Zero-toll secondary bypass corridor for heavy transport.'
-        : 'Eco-friendly alternative route saving maximum energy and fuel.';
 
     const dynamicRoutes: CandidateRoute[] = [
       {
@@ -435,48 +495,11 @@ export const useRouteStore = create<RouteState>((set, get) => ({
           safety_score: 96,
           vehicle_compatibility_score: 99,
         },
-        recommendation_reason: recReason1,
+        recommendation_reason: `Nearest-First 2-Opt Tour: Minimized total travel distance (${baseDistKm} km) and fuel usage.`,
         is_recommended: true,
         steps: [
-          { instruction: `Head toward main transit corridor from live location`, distance_m: 500, duration_s: 60, road_name: 'Access Road' },
-          { instruction: `Proceed for ${baseDistKm - 1} km toward ${destination.name || destination.address || 'Destination'}`, distance_m: (baseDistKm - 1) * 1000, duration_s: (durationMin1 - 2) * 60, road_name: 'Main Arterial Highway' },
-          { instruction: `Arrive at ${destination.name || destination.address || 'Destination'} on the left`, distance_m: 200, duration_s: 40, road_name: 'Destination Arrival' },
-        ],
-      },
-      {
-        id: 'route_irs_eco',
-        label: 'Eco Fuel Saver',
-        coordinates: dynamicCoordinates2,
-        distance_km: distKm2,
-        duration_min: durationMin2,
-        eta_iso: new Date(Date.now() + durationMin2 * 60000).toISOString(),
-        fuel_litres: fuel2,
-        fuel_cost_inr: fuelCost2,
-        toll_cost_inr: 0,
-        driver_cost_inr: driver2,
-        maintenance_cost_inr: maint2,
-        total_cost_inr: total2,
-        traffic_delay_min: 4.0,
-        traffic_level: 'Moderate',
-        weather_condition: 'Clear Sky 28°C',
-        road_quality: 'Standard Urban Road',
-        overall_score: 91.5,
-        sub_scores: {
-          time_score: 86,
-          fuel_score: 99,
-          cost_score: 98,
-          traffic_score: 88,
-          distance_score: 98,
-          weather_score: 99,
-          road_condition_score: 90,
-          safety_score: 93,
-          vehicle_compatibility_score: 94,
-        },
-        recommendation_reason: recReason2,
-        is_recommended: false,
-        steps: [
-          { instruction: 'Head toward eco arterial route', distance_m: 400, duration_s: 50, road_name: 'Local Access' },
-          { instruction: `Proceed along secondary avenue for ${distKm2} km`, distance_m: distKm2 * 1000, duration_s: (durationMin2 - 1) * 60, road_name: 'Secondary Avenue' },
+          { instruction: `Depart from Start location toward first drop`, distance_m: 500, duration_s: 60, road_name: 'Access Road' },
+          { instruction: `Proceed along optimized corridor for ${baseDistKm - 1} km`, distance_m: (baseDistKm - 1) * 1000, duration_s: (durationMin1 - 2) * 60, road_name: 'Main Arterial Highway' },
           { instruction: `Arrive at ${destination.name || destination.address || 'Destination'}`, distance_m: 200, duration_s: 40, road_name: 'Arrival Point' },
         ],
       },
@@ -492,6 +515,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
   optimizeMultiStops: async () => {
     const { origin, destination, stops } = get();
+    if (!stops || stops.length === 0) return true;
     set({ isLoading: true, error: null });
 
     try {
@@ -501,7 +525,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         stops,
       });
 
-      if (response && response.ordered_stops) {
+      if (response && response.ordered_stops && response.ordered_stops.length > 0) {
         set({
           stops: response.ordered_stops,
           isLoading: false,
@@ -509,13 +533,81 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         return true;
       }
     } catch {
-      // Fallback gracefully
+      // Fallback gracefully to client-side TSP
     }
 
-    // Heuristic 2-opt reorder on client side if offline
-    const urgentFirst = [...stops].sort((a, b) => (b.priority || 1) - (a.priority || 1));
-    set({ stops: urgentFirst, isLoading: false });
+    // Exact Nearest-Neighbor + 2-Opt TSP algorithm on client side
+    const optimizedStops = solveTSPNearestNeighbor2Opt(origin, stops, destination);
+    set({ stops: optimizedStops, isLoading: false });
     return true;
+  },
+
+  calculateMultiStopTour: async (vehicleType = 'CAR') => {
+    const { origin, destination: currentDest, stops, optimizeMultiStops } = get();
+    if (!stops || stops.length === 0) return false;
+    set({ isLoading: true, error: null });
+
+    // 1. Run Nearest-Neighbor + 2-Opt TSP sequencer
+    await optimizeMultiStops();
+    const orderedStops = get().stops;
+
+    // 2. Formulate waypoints and destination
+    let destPoint: GeoPoint;
+    let waypoints: GeoPoint[];
+
+    if (currentDest && currentDest.lat && currentDest.lng && currentDest.lat !== orderedStops[orderedStops.length - 1].lat) {
+      // User has custom destination (e.g. Return to Start or Custom Hub)
+      waypoints = orderedStops.map((s) => ({
+        lat: s.lat,
+        lng: s.lng,
+        name: s.name || s.address,
+        address: s.address,
+      }));
+      destPoint = currentDest;
+    } else {
+      // Last drop is destination
+      const finalDest = orderedStops[orderedStops.length - 1];
+      waypoints = orderedStops.slice(0, orderedStops.length - 1).map((s) => ({
+        lat: s.lat,
+        lng: s.lng,
+        name: s.name || s.address,
+        address: s.address,
+      }));
+      destPoint = {
+        lat: finalDest.lat,
+        lng: finalDest.lng,
+        name: finalDest.name || finalDest.address,
+        address: finalDest.address,
+      };
+      set({ destination: destPoint });
+    }
+
+    set({ waypoints });
+
+    // 3. Query real-road routing engine across all multi-stop waypoints
+    try {
+      const routes = await googleDirectionsService.getDirections(
+        origin,
+        destPoint,
+        waypoints,
+        vehicleType
+      );
+      if (routes && routes.length > 0) {
+        set({
+          candidateRoutes: routes,
+          selectedRouteId: routes[0].id,
+          isLoading: false,
+        });
+        return true;
+      }
+    } catch {
+      // fallback
+    }
+
+    // Fallback calculation
+    const ok = await get().calculateRoutes(vehicleType);
+    set({ isLoading: false });
+    return ok;
   },
 
   getSelectedRoute: () => {

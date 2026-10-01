@@ -82,9 +82,9 @@ class HybridProductionGeocodingProvider(BaseGeocodingProvider):
         except Exception as e:
             logger.debug(f"Photon geocode search notice: {e}")
 
-        # 2. Fallback to OpenStreetMap Nominatim
+        # 2. Fallback to OpenStreetMap Nominatim with POI & shop details
         try:
-            url = f"{self.base_url}/search?q={clean_query}&format=json&addressdetails=1&limit={limit}"
+            url = f"{self.base_url}/search?q={clean_query}&format=json&addressdetails=1&extratags=1&namedetails=1&limit={limit}"
             async with httpx.AsyncClient(timeout=3.5) as client:
                 resp = await client.get(url, headers=self.headers)
                 if resp.status_code == 200:
@@ -95,12 +95,16 @@ class HybridProductionGeocodingProvider(BaseGeocodingProvider):
                             addr_detail = item.get("address", {})
                             name = (
                                 item.get("name")
+                                or addr_detail.get("shop")
+                                or addr_detail.get("amenity")
+                                or addr_detail.get("building")
                                 or addr_detail.get("road")
                                 or addr_detail.get("suburb")
+                                or addr_detail.get("neighbourhood")
                                 or addr_detail.get("city")
                                 or clean_query
                             )
-                            city = addr_detail.get("city") or addr_detail.get("town") or addr_detail.get("county")
+                            city = addr_detail.get("city") or addr_detail.get("town") or addr_detail.get("county") or addr_detail.get("district")
                             state = addr_detail.get("state")
                             country = addr_detail.get("country")
 

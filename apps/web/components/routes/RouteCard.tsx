@@ -88,6 +88,37 @@ export default function RouteCard({ route, isSelected, onSelect }: RouteCardProp
             via {route.label}
           </div>
 
+          {/* Road Classification Badge */}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {route.label.toLowerCase().includes("small") || route.label.toLowerCase().includes("alley") || route.label.toLowerCase().includes("bike") ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#e6f4ea] text-[#137333] border border-[#ceead6]">
+                🚲 Small Road / Alley Shortcut
+              </span>
+            ) : route.label.toLowerCase().includes("transit") || route.label.toLowerCase().includes("bus") ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#f3e8fd] text-[#7627bb] border border-[#e9d2fd]">
+                🚌 Transit Boulevard (High Clearance)
+              </span>
+            ) : route.label.toLowerCase().includes("freight") || route.label.toLowerCase().includes("bypass") ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#fef7e0] text-[#b06000] border border-[#feefc3]">
+                🚛 Freight Bypass Corridor
+              </span>
+            ) : route.label.toLowerCase().includes("highway") || route.label.toLowerCase().includes("flyover") ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#e8f0fe] text-[#1a73e8] border border-[#d2e3fc]">
+                🚗 Multi-Lane Highway / Flyover
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#f1f3f4] text-[#3c4043] border border-[#dadce0]">
+                🛣️ City Arterial Avenue
+              </span>
+            )}
+
+            {route.sub_scores?.vehicle_compatibility_score && (
+              <span className="text-[10px] font-semibold text-[#188038] bg-[#e6f4ea] px-1.5 py-0.5 rounded-md">
+                {Math.round(route.sub_scores.vehicle_compatibility_score)}% Road Fit
+              </span>
+            )}
+          </div>
+
           {/* Traffic info & ETA */}
           <div className="flex items-center gap-2 mt-1 text-xs text-[#5f6368]">
             <span className={`inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded-full border text-[11px] ${getTrafficBadge(route.traffic_level)}`}>
@@ -202,6 +233,7 @@ export default function RouteCard({ route, isSelected, onSelect }: RouteCardProp
             { label: "Weather Safety", score: route.sub_scores.weather_score, color: "bg-[#ea8600]" },
             { label: "Road Surface Quality", score: route.sub_scores.road_condition_score, color: "bg-[#5f6368]" },
             { label: "Driver Safety", score: route.sub_scores.safety_score, color: "bg-[#137333]" },
+            { label: "Vehicle Road Compatibility", score: route.sub_scores.vehicle_compatibility_score || 95.0, color: "bg-[#188038]" },
           ].map((item, idx) => (
             <div key={idx} className="space-y-0.5">
               <div className="flex justify-between text-[11px] text-[#3c4043]">
