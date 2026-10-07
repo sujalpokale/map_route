@@ -352,7 +352,13 @@ export default function RoutesScreen() {
         selectedRoute.steps,
         selectedRoute.distance_km,
         selectedRoute.duration_min,
-        selectedRoute.coordinates
+        selectedRoute.coordinates,
+        {
+          route: selectedRoute,
+          origin,
+          destination,
+          waypoints: useMultiStopStore.getState().waypoints,
+        }
       );
       router.push({
         pathname: '/navigation/[routeId]',
