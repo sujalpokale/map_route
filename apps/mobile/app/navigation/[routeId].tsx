@@ -20,6 +20,7 @@ import { useNavigationStore } from '@/stores/useNavigationStore';
 import { useLocationStore } from '@/stores/useLocationStore';
 import { useTripStore } from '@/stores/useTripStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
+import { usePremiumGate } from '@/services/premium';
 import { trafficService } from '@/services/api/traffic';
 import * as Location from 'expo-location';
 
@@ -54,6 +55,7 @@ export default function ActiveNavigationScreen() {
   const { currentLocation, speedKmh, setLocation, setTracking } = useLocationStore();
   const { completeActiveTrip } = useTripStore();
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
+  const { isPremium: hasAdvancedNavigation, requirePremium: requireAdvancedNavigationPremium } = usePremiumGate('advanced_navigation');
 
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [cameraLocked, setCameraLocked] = useState(true);
@@ -104,6 +106,10 @@ export default function ActiveNavigationScreen() {
   useEffect(() => {
     if (!isNavigating) return;
     const pollTraffic = () => {
+      if (!hasAdvancedNavigation) {
+        setTrafficLevel('Premium');
+        return;
+      }
       const live = useLocationStore.getState().currentLocation;
       if (!live) return;
       trafficService.getTrafficStatus({ lat: live.latitude, lng: live.longitude, name: 'Current GPS location' })
@@ -113,7 +119,7 @@ export default function ActiveNavigationScreen() {
     pollTraffic();
     const timer = setInterval(pollTraffic, 60_000);
     return () => clearInterval(timer);
-  }, [isNavigating, setTrafficLevel]);
+  }, [isNavigating, hasAdvancedNavigation, setTrafficLevel]);
 
   useEffect(() => {
     if (!isDeviated) {
@@ -271,10 +277,10 @@ export default function ActiveNavigationScreen() {
         destination={navigationDestination}
         activeRoute={selectedRoute}
         activeProgressPct={progressPct}
-        navigationMode
-        cameraLocked={cameraLocked}
-        onNavigationCameraInteraction={() => setCameraLocked(false)}
-        onNavigationCameraLockChange={setCameraLocked}
+        navigationMode={hasAdvancedNavigation}
+        cameraLocked={hasAdvancedNavigation && cameraLocked}
+        onNavigationCameraInteraction={() => hasAdvancedNavigation && setCameraLocked(false)}
+        onNavigationCameraLockChange={(locked) => hasAdvancedNavigation && setCameraLocked(locked)}
         currentLocation={
           currentLocation
             ? {
@@ -341,8 +347,15 @@ export default function ActiveNavigationScreen() {
           />
 
           <View style={styles.statusStack}>
-            <Text style={styles.statusText}>Traffic: {trafficLevel === 'Unavailable' ? 'Unavailable' : trafficLevel.toLowerCase()}</Text>
+            <Text style={styles.statusText}>
+              Traffic: {trafficLevel === 'Premium' ? 'Premium feature' : trafficLevel === 'Unavailable' ? 'Unavailable' : trafficLevel.toLowerCase()}
+            </Text>
             {isRerouting && <Text style={styles.reroutingText}>Finding a new route...</Text>}
+            {!hasAdvancedNavigation && (
+              <TouchableOpacity onPress={requireAdvancedNavigationPremium}>
+                <Text style={styles.premiumNavText}>🔒 Live-follow camera & advanced traffic require Premium · UPGRADE</Text>
+              </TouchableOpacity>
+            )}
             {gpsError && <Text style={styles.reroutingText}>{gpsError}</Text>}
           </View>
         </View>
@@ -472,6 +485,7 @@ const styles = StyleSheet.create({
   statusStack: { alignItems: 'flex-end', gap: 3, maxWidth: '55%' },
   statusText: { color: THEME.colors.text, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   reroutingText: { color: THEME.colors.warning, fontSize: 10, textAlign: 'right' },
+  premiumNavText: { color: '#FBBC04', fontSize: 9, textAlign: 'right', lineHeight: 12 },
   testDeviationBtn: {
     flexDirection: 'row',
     alignItems: 'center',

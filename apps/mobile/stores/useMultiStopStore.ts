@@ -8,6 +8,8 @@ import {
 import { routeService } from '@/services/api/routes';
 import { trafficService } from '@/services/api/traffic';
 import { useVehicleStore } from './useVehicleStore';
+import { isActivePremium } from '@/services/premium';
+import { useAuthStore } from './useAuthStore';
 
 interface MultiStopState {
   origin: GeoPoint | null;
@@ -221,6 +223,11 @@ export const useMultiStopStore = create<MultiStopState>((set, get) => ({
     }),
 
   optimizeMultiStops: async () => {
+    if (!isActivePremium(useAuthStore.getState().subscription)) {
+      set({ error: 'Premium subscription required for Multi-Stop Optimization.', isLoading: false });
+      return false;
+    }
+
     const { origin, destination, stops } = get();
 
     if (!stops.length) {
@@ -262,6 +269,11 @@ export const useMultiStopStore = create<MultiStopState>((set, get) => ({
   },
 
   calculateMultiStopTour: async (vehicleType = 'CAR') => {
+    if (!isActivePremium(useAuthStore.getState().subscription)) {
+      set({ error: 'Premium subscription required for Multi-Stop Optimization.', isLoading: false });
+      return false;
+    }
+
     const state = get();
     const vehicle = useVehicleStore.getState().getSelectedVehicle();
 

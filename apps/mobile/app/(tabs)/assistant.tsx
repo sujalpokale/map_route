@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Send, Mic, MicOff, Sparkles, Trash2, Bot } from 'lucide-react-native';
+import { Send, Mic, MicOff, Sparkles, Trash2, Bot, Lock } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { Header } from '@/components/ui/Header';
 import { AIChatBubble } from '@/components/assistant/AIChatBubble';
@@ -23,6 +23,7 @@ import { useRouteStore } from '@/stores/useRouteStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
 import { useLocationStore } from '@/stores/useLocationStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
+import { usePremiumGate } from '@/services/premium';
 
 export default function AssistantScreen() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function AssistantScreen() {
   } = useAIStore();
   const { getSelectedRoute } = useRouteStore();
   const { startNavigation } = useNavigationStore();
+  const { isPremium, requirePremium } = usePremiumGate('ai_route_assistant');
   const currentLocation = useLocationStore((state) => state.currentLocation);
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
 
@@ -47,6 +49,7 @@ export default function AssistantScreen() {
   const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputVal;
     if (!text.trim()) return;
+    if (!requirePremium()) return;
 
     setInputVal('');
     await sendMessage(text, {
@@ -67,6 +70,11 @@ export default function AssistantScreen() {
   };
 
   const handleActionPress = (action: any) => {
+    if (!isPremium) {
+      requirePremium();
+      return;
+    }
+
     if (action.type === 'NAVIGATE' && selectedRoute) {
       startNavigation(
         selectedRoute.steps,
@@ -104,6 +112,21 @@ export default function AssistantScreen() {
           contentContainerStyle={styles.chatScroll}
           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         >
+          {!isPremium && (
+            <TouchableOpacity style={styles.premiumLockBanner} onPress={requirePremium} activeOpacity={0.82}>
+              <View style={styles.premiumLockIcon}>
+                <Lock size={16} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.premiumLockTitle}>AI Route Assistant is Premium</Text>
+                <Text style={styles.premiumLockText}>
+                  Unlock conversational route analysis, AI explanations, and smart actions.
+                </Text>
+              </View>
+              <Text style={styles.premiumLockCta}>UPGRADE</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Grounded AI Badge */}
           <View style={styles.groundedPill}>
             <Sparkles size={12} color={THEME.colors.primaryLight} />
@@ -139,10 +162,11 @@ export default function AssistantScreen() {
         {/* Input Bar */}
         <View style={styles.inputBar}>
           <TextInput
-            placeholder="Ask Route Intelligence (e.g. 'Why this route?')..."
+            placeholder={isPremium ? "Ask Route Intelligence (e.g. 'Why this route?')..." : "Premium feature — tap Upgrade above"}
             placeholderTextColor={THEME.colors.textMuted}
             value={inputVal}
             onChangeText={setInputVal}
+            editable={isPremium}
             style={styles.textInput}
             onSubmitEditing={() => handleSend()}
           />
@@ -160,8 +184,8 @@ export default function AssistantScreen() {
 
           <TouchableOpacity
             onPress={() => handleSend()}
-            disabled={!inputVal.trim() || isThinking}
-            style={[styles.sendBtn, !inputVal.trim() && styles.sendBtnDisabled]}
+            disabled={isThinking}
+            style={[styles.sendBtn, (!inputVal.trim() || !isPremium) && styles.sendBtnDisabled]}
           >
             <Send size={16} color="#090D16" />
           </TouchableOpacity>
@@ -203,6 +227,41 @@ const styles = StyleSheet.create({
     color: THEME.colors.primaryLight,
     fontSize: 10,
     fontWeight: '600',
+  },
+  premiumLockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(251, 188, 4, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 188, 4, 0.45)',
+    borderRadius: THEME.radius.md,
+    padding: 12,
+    marginBottom: 12,
+  },
+  premiumLockIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#9A6700',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  premiumLockTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  premiumLockText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  premiumLockCta: {
+    color: '#FBBC04',
+    fontSize: 10,
+    fontWeight: '900',
   },
   thinkingRow: {
     flexDirection: 'row',
