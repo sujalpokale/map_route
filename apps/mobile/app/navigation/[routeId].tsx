@@ -479,6 +479,7 @@ const styles = StyleSheet.create({
   statusStack: { alignItems: 'flex-end', gap: 3, maxWidth: '55%' },
   statusText: { color: THEME.colors.text, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   reroutingText: { color: THEME.colors.warning, fontSize: 10, textAlign: 'right' },
+  premiumNavText: { color: '#FBBC04', fontSize: 9, textAlign: 'right', lineHeight: 12 },
   testDeviationBtn: {
     flexDirection: 'row',
     alignItems: 'center',
