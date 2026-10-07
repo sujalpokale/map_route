@@ -20,6 +20,7 @@ import { useNavigationStore } from '@/stores/useNavigationStore';
 import { useLocationStore } from '@/stores/useLocationStore';
 import { useTripStore } from '@/stores/useTripStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
+import { usePremiumGate } from '@/services/premium';
 import { trafficService } from '@/services/api/traffic';
 import * as Location from 'expo-location';
 
@@ -54,6 +55,7 @@ export default function ActiveNavigationScreen() {
   const { currentLocation, speedKmh, setLocation, setTracking } = useLocationStore();
   const { completeActiveTrip } = useTripStore();
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
+  const { isPremium: hasAdvancedNavigation } = usePremiumGate('advanced_navigation');
 
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [cameraLocked, setCameraLocked] = useState(true);
@@ -113,7 +115,7 @@ export default function ActiveNavigationScreen() {
     pollTraffic();
     const timer = setInterval(pollTraffic, 60_000);
     return () => clearInterval(timer);
-  }, [isNavigating, setTrafficLevel]);
+  }, [isNavigating, hasAdvancedNavigation, setTrafficLevel]);
 
   useEffect(() => {
     if (!isDeviated) {
@@ -271,10 +273,10 @@ export default function ActiveNavigationScreen() {
         destination={navigationDestination}
         activeRoute={selectedRoute}
         activeProgressPct={progressPct}
-        navigationMode
-        cameraLocked={cameraLocked}
-        onNavigationCameraInteraction={() => setCameraLocked(false)}
-        onNavigationCameraLockChange={setCameraLocked}
+        navigationMode={hasAdvancedNavigation}
+        cameraLocked={hasAdvancedNavigation && cameraLocked}
+        onNavigationCameraInteraction={() => hasAdvancedNavigation && setCameraLocked(false)}
+        onNavigationCameraLockChange={(locked) => hasAdvancedNavigation && setCameraLocked(locked)}
         currentLocation={
           currentLocation
             ? {
@@ -341,8 +343,13 @@ export default function ActiveNavigationScreen() {
           />
 
           <View style={styles.statusStack}>
-            <Text style={styles.statusText}>Traffic: {trafficLevel === 'Unavailable' ? 'Unavailable' : trafficLevel.toLowerCase()}</Text>
+            <Text style={styles.statusText}>
+              Traffic: {trafficLevel === 'Premium' ? 'Premium feature' : trafficLevel === 'Unavailable' ? 'Unavailable' : trafficLevel.toLowerCase()}
+            </Text>
             {isRerouting && <Text style={styles.reroutingText}>Finding a new route...</Text>}
+            {!hasAdvancedNavigation && (
+              <Text style={styles.premiumNavText}>🔒 Live-follow camera & advanced traffic require Premium</Text>
+            )}
             {gpsError && <Text style={styles.reroutingText}>{gpsError}</Text>}
           </View>
         </View>
