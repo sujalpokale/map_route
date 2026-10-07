@@ -37,6 +37,7 @@ export interface MapViewAbstractionProps {
   navigationMode?: boolean;
   cameraLocked?: boolean;
   onNavigationCameraInteraction?: () => void;
+  onNavigationCameraLockChange?: (locked: boolean) => void;
 }
 
 export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
@@ -56,6 +57,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   navigationMode = false,
   cameraLocked = false,
   onNavigationCameraInteraction,
+  onNavigationCameraLockChange,
 }) => {
   const webViewRef = useRef<any>(null);
   const isMapReadyRef = useRef<boolean>(false);
@@ -796,7 +798,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
               webViewRef.current?.injectJavaScript?.(
                 `window.setNavigationLock && window.setNavigationLock(${next ? 'true' : 'false'}); true;`
               );
-              onNavigationCameraInteraction?.();
+              onNavigationCameraLockChange?.(next);
               if (next) handleNavigationRecenter();
             }}
           >
@@ -810,6 +812,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
               webViewRef.current?.injectJavaScript?.(
                 `window.setNavigationLock && window.setNavigationLock(true); true;`
               );
+              onNavigationCameraLockChange?.(true);
               handleNavigationRecenter();
             }}
           >
