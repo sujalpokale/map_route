@@ -32,7 +32,8 @@ export default function RouteDetailsScreen() {
       startNavigation(
         selectedRoute.steps,
         selectedRoute.distance_km,
-        selectedRoute.duration_min
+        selectedRoute.duration_min,
+        selectedRoute.coordinates
       );
       router.push({
         pathname: '/navigation/[routeId]',

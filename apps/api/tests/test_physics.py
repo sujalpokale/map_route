@@ -27,6 +27,19 @@ def test_vehicle_physics_consumption():
     assert truck_eff < eff
 
 
+def test_custom_vehicle_efficiency_and_fuel_price_drive_estimate():
+    amount, _, cost = PhysicsEngine.calculate_consumption(
+        distance_km=10,
+        duration_min=10,
+        vehicle_type=VehicleTypeEnum.CAR,
+        fuel_type=FuelTypeEnum.PETROL,
+        custom_efficiency=10,
+        custom_fuel_price=50,
+    )
+    assert amount == 1
+    assert cost == 50
+
+
 def test_cost_breakdown():
     costs = PhysicsEngine.calculate_total_route_cost(
         fuel_cost_inr=500.0,

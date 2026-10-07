@@ -62,11 +62,13 @@ class ApiClient {
     let timeoutId: any = null;
     try {
       const controller = new AbortController();
+      // Local EasyOCR may need extra time on its first run while it initializes.
+      const timeoutMs = (options as any)?.timeoutMs || (endpoint.includes('/ocr') ? 50000 : 12000);
       timeoutId = setTimeout(() => {
         try {
           controller.abort();
         } catch {}
-      }, 10000); // 10s timeout
+      }, timeoutMs);
 
       // If consumer passed their own AbortSignal, listen to it
       if (options.signal) {

@@ -60,7 +60,7 @@ export interface CandidateRoute {
   maintenance_cost_inr: number;
   total_cost_inr: number;
   traffic_delay_min: number;
-  traffic_level: 'Low' | 'Moderate' | 'High' | 'Severe';
+  traffic_level: 'Low' | 'Moderate' | 'High' | 'Severe' | 'LOW' | 'MODERATE' | 'HIGH' | 'SEVERE' | 'Unavailable';
   weather_condition: string;
   road_quality: string;
   overall_score: number;
@@ -77,11 +77,13 @@ export interface RouteCalculateRequest {
   vehicle_type?: VehicleType;
   fuel_type?: FuelType;
   fuel_efficiency_kmpl?: number;
+  fuel_price_inr?: number;
   payload_kg?: number;
   optimization_mode?: OptimizationMode;
   departure_time?: string;
   custom_weights?: Record<string, number>;
   ev_battery_pct?: number;
+  avoid_features?: string[];
 }
 
 export interface RouteCalculateResponse {
@@ -127,6 +129,7 @@ export interface OptimizeStopsResponse {
   total_payload_kg: number;
   polyline_coordinates: [number, number][];
   summary: string;
+  traffic_aware?: boolean;
 }
 
 export interface GPSLocation {

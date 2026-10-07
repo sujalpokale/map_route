@@ -68,7 +68,8 @@ class ScoringEngine:
                 fuel_type=request.fuel_type,
                 payload_kg=request.payload_kg or 0.0,
                 custom_efficiency=request.fuel_efficiency_kmpl,
-                traffic_delay_min=raw.traffic_delay_min
+                traffic_delay_min=raw.traffic_delay_min,
+                custom_fuel_price=request.fuel_price_inr,
             )
 
             cost_breakdown = PhysicsEngine.calculate_total_route_cost(
@@ -114,9 +115,15 @@ class ScoringEngine:
             cost_score = round(min(100.0, (min_cost / max(m["total_cost_inr"], 1.0)) * 100.0), 1)
 
             # Traffic score
-            traffic_map = {"Low": 96.0, "Moderate": 78.0, "High": 52.0, "Severe": 30.0}
-            base_traffic_score = traffic_map.get(raw.traffic_level, 80.0)
-            traffic_penalty = min(raw.traffic_delay_min * 2.0, 30.0)
+            traffic_map = {
+                "low": 96.0,
+                "moderate": 78.0,
+                "high": 52.0,
+                "severe": 30.0,
+            }
+            traffic_known = raw.traffic_level.lower() in traffic_map
+            base_traffic_score = traffic_map.get(raw.traffic_level.lower(), 50.0)
+            traffic_penalty = min(raw.traffic_delay_min * 2.0, 30.0) if traffic_known else 0.0
             traffic_score = round(max(10.0, base_traffic_score - traffic_penalty), 1)
 
             # Weather score from provider

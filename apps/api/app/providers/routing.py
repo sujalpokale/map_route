@@ -77,71 +77,69 @@ class OSRMProvider(BaseRoutingProvider):
         waypoints: Optional[List[GeoPoint]] = None,
         vehicle_type: VehicleTypeEnum = VehicleTypeEnum.CAR
     ) -> List[RawRouteCandidate]:
-        # Coordinates in OSRM URL format: {lng},{lat};{lng},{lat}
         points = [origin] + (waypoints or []) + [destination]
-        coords_str = ";".join([f"{p.lng},{p.lat}" for p in points])
-
-        # Attempt vehicle-preferred profile if supported by OSRM backend
-        osrm_profile = "bike" if vehicle_type == VehicleTypeEnum.BIKE else "driving"
-        url = f"{self.base_url}/route/v1/{osrm_profile}/{coords_str}?overview=full&geometries=geojson&steps=true&alternatives=true"
+        coords = ";".join(f"{point.lng},{point.lat}" for point in points)
+        profile = "bike" if vehicle_type == VehicleTypeEnum.BIKE else "driving"
+        url = f"{self.base_url}/route/v1/{profile}/{coords}"
+        params = {"overview": "full", "geometries": "geojson", "steps": "true", "alternatives": "true"}
 
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                resp = await client.get(url)
-                if resp.status_code != 200 and osrm_profile != "driving":
-                    # Fallback to driving profile on OSRM if bike profile unconfigured
-                    fallback_url = f"{self.base_url}/route/v1/driving/{coords_str}?overview=full&geometries=geojson&steps=true&alternatives=true"
-                    resp = await client.get(fallback_url)
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(url, params=params)
+                if response.status_code != 200 and profile != "driving":
+                    response = await client.get(f"{self.base_url}/route/v1/driving/{coords}", params=params)
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("OSRM request failed: %s", type(exc).__name__)
+            return []
 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    routes_data = data.get("routes", [])
-                    if routes_data:
-                        primary_route = routes_data[0]
-                        primary_geom = primary_route.get("geometry", {}).get("coordinates", [])
-                        primary_coords = [[pt[1], pt[0]] for pt in primary_geom]
-                        base_dist = round(primary_route.get("distance", 0) / 1000.0, 2)
-                        base_dur = round(primary_route.get("duration", 0) / 60.0, 1)
+        candidates: List[RawRouteCandidate] = []
+        for route_number, route in enumerate(payload.get("routes", []), start=1):
+            geometry = (route.get("geometry") or {}).get("coordinates") or []
+            coordinates = [[float(point[1]), float(point[0])] for point in geometry if len(point) >= 2]
+            distance_m = route.get("distance")
+            duration_s = route.get("duration")
+            if len(coordinates) < 2 or not isinstance(distance_m, (int, float)) or distance_m <= 0 or not isinstance(duration_s, (int, float)):
+                continue
 
-                        # If OSRM returned fewer than 2 alternatives, attempt an authentic street via-point route
-                        if len(routes_data) < 2 and len(primary_coords) > 4:
-                            try:
-                                mid_idx = len(primary_coords) // 2
-                                mid_pt = primary_coords[mid_idx]
-                                dx = destination.lng - origin.lng
-                                dy = destination.lat - origin.lat
-                                mag = math.sqrt(dx * dx + dy * dy)
-                                if mag > 1e-5:
-                                    offset = min(mag * 0.15, 0.003)
-                                    via_lat = mid_pt[0] + (dx / mag) * offset
-                                    via_lng = mid_pt[1] - (dy / mag) * offset
-                                    via_url = f"{self.base_url}/route/v1/{osrm_profile}/{origin.lng},{origin.lat};{via_lng:.6f},{via_lat:.6f};{destination.lng},{destination.lat}?overview=full&geometries=geojson&steps=true"
-                                    via_resp = await client.get(via_url)
-                                    if via_resp.status_code == 200:
-                                        via_data = via_resp.json()
-                                        if via_data.get("routes"):
-                                            v_route = via_data["routes"][0]
-                                            v_dist = round(v_route.get("distance", 0) / 1000.0, 2)
-                                            if v_dist <= base_dist * 1.4:
-                                                routes_data.append(v_route)
-                            except Exception as via_err:
-                                logger.debug(f"OSRM via-point alternative query note: {via_err}")
+            steps: List[TurnStep] = []
+            for leg in route.get("legs", []):
+                for raw_step in leg.get("steps", []):
+                    maneuver = raw_step.get("maneuver") or {}
+                    action = str(maneuver.get("type") or "continue").replace("_", " ")
+                    modifier = str(maneuver.get("modifier") or "").replace("_", " ")
+                    road = raw_step.get("name") or None
+                    if action == "turn":
+                        instruction = f"Turn {modifier or 'ahead'}"
+                    elif action in {"depart", "arrive", "roundabout", "rotary", "exit roundabout"}:
+                        instruction = action.capitalize()
+                    elif action == "continue":
+                        instruction = "Continue"
+                    else:
+                        instruction = action.capitalize()
+                    if road:
+                        instruction += f" onto {road}" if action in {"turn", "merge", "on ramp", "off ramp", "fork", "new name", "end of road"} else f" on {road}"
+                    step_distance = raw_step.get("distance") or 0
+                    step_duration = raw_step.get("duration") or 0
+                    steps.append(TurnStep(
+                        instruction=instruction,
+                        distance_m=float(step_distance),
+                        duration_s=float(step_duration),
+                        road_name=road,
+                    ))
 
-                        # Build vehicle-tailored candidates strictly from real OSRM coordinates
-                        return self._build_vehicle_routes(
-                            base_coords=primary_coords,
-                            base_dist=base_dist,
-                            base_dur=base_dur,
-                            origin=origin,
-                            destination=destination,
-                            vehicle_type=vehicle_type,
-                            osrm_routes=routes_data
-                        )
-        except Exception as e:
-            logger.warning(f"OSRM request failed: {e}. Falling back to dynamic route generator.")
-
-        # Fallback to simulated realistic road network
-        return SimulatedFallbackRoutingProvider().get_routes_sync(origin, destination, waypoints, vehicle_type)
+            candidates.append(RawRouteCandidate(
+                label=f"Road route {route_number}",
+                coordinates=coordinates,
+                distance_km=round(float(distance_m) / 1000, 2),
+                duration_min=round(float(duration_s) / 60, 1),
+                traffic_level="Unavailable",
+                traffic_delay_min=0,
+                road_quality="Unavailable",
+                steps=steps,
+            ))
+        return candidates
 
     def _build_vehicle_routes(
         self,
@@ -855,6 +853,7 @@ class GoogleMapsRoutingProvider(BaseRoutingProvider):
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or settings.GOOGLE_MAPS_API_KEY
+        self.used_fallback = False
 
     async def get_routes(
         self,
@@ -865,7 +864,12 @@ class GoogleMapsRoutingProvider(BaseRoutingProvider):
     ) -> List[RawRouteCandidate]:
         if not self.api_key:
             logger.warning("GOOGLE_MAPS_API_KEY missing, falling back to OSRM")
-            return await OSRMProvider().get_routes(origin, destination, waypoints, vehicle_type)
+            self.used_fallback = True
+            fallback = await OSRMProvider().get_routes(origin, destination, waypoints, vehicle_type)
+            for route in fallback:
+                route.traffic_level = "Unavailable"
+                route.traffic_delay_min = 0
+            return fallback
 
         origin_str = f"{origin.lat},{origin.lng}"
         dest_str = f"{destination.lat},{destination.lng}"
@@ -903,7 +907,11 @@ class GoogleMapsRoutingProvider(BaseRoutingProvider):
                                 for leg in legs
                             )
                             normal_duration_s = sum(leg.get("duration", {}).get("value", 0) for leg in legs)
-                            delay_min = max(0.0, round((total_duration_s - normal_duration_s) / 60.0, 1))
+                            traffic_available = any(
+                                isinstance(leg.get("duration_in_traffic", {}).get("value"), (int, float))
+                                for leg in legs
+                            )
+                            delay_min = max(0.0, round((total_duration_s - normal_duration_s) / 60.0, 1)) if traffic_available else 0.0
 
                             distance_km = round(total_distance_m / 1000.0, 2)
                             duration_min = round(total_duration_s / 60.0, 1)
@@ -931,7 +939,9 @@ class GoogleMapsRoutingProvider(BaseRoutingProvider):
                             has_tolls = any("toll" in str(w).lower() for w in warnings) or "toll" in summary.lower()
 
                             # Determine traffic level
-                            if delay_min > 10.0:
+                            if not traffic_available:
+                                traffic_level = "Unavailable"
+                            elif delay_min > 10.0:
                                 traffic_level = "High"
                             elif delay_min > 3.0:
                                 traffic_level = "Moderate"
@@ -966,13 +976,27 @@ class GoogleMapsRoutingProvider(BaseRoutingProvider):
         except Exception as e:
             logger.error(f"Google Maps routing error: {e}")
 
-        # Fallback to OSRM / simulation if Google API fails
-        return await OSRMProvider().get_routes(origin, destination, waypoints, vehicle_type)
+        # Fallback to OSRM without claiming it has live traffic.
+        self.used_fallback = True
+        fallback_routes = await OSRMProvider().get_routes(origin, destination, waypoints, vehicle_type)
+        for route in fallback_routes:
+            route.traffic_level = "Unavailable"
+            route.traffic_delay_min = 0
+        return fallback_routes
 
 
 def get_routing_provider() -> BaseRoutingProvider:
+    if settings.ROUTING_PROVIDER.lower() == "here" or settings.HERE_API_KEY:
+        from apps.api.app.providers.here import HEREProvider
+        if settings.HERE_API_KEY:
+            return HEREProvider()
+        logger.warning("HERE selected but HERE_API_KEY is missing; using OSRM without live traffic")
+        return OSRMProvider()
     if settings.ROUTING_PROVIDER == "google" or settings.GOOGLE_MAPS_API_KEY:
         return GoogleMapsRoutingProvider()
     if settings.ROUTING_PROVIDER == "osrm":
         return OSRMProvider()
-    return SimulatedFallbackRoutingProvider()
+    if settings.ROUTING_PROVIDER == "simulation":
+        return SimulatedFallbackRoutingProvider()
+    logger.warning("Unsupported routing provider %s; using OSRM without live traffic", settings.ROUTING_PROVIDER)
+    return OSRMProvider()

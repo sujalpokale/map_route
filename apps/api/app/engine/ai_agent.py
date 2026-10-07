@@ -81,8 +81,9 @@ async def tool_compare_routes(origin_query: str, dest_query: str) -> Dict[str, A
     geo = get_geocoding_provider()
     orig_pts = await geo.search(origin_query, limit=1)
     dest_pts = await geo.search(dest_query, limit=1)
-    p1 = orig_pts[0] if orig_pts else GeoPoint(lat=18.5204, lng=73.8567, address="Pune")
-    p2 = dest_pts[0] if dest_pts else GeoPoint(lat=18.5913, lng=73.7389, address="Hinjawadi")
+    if not orig_pts or not dest_pts:
+        return {"error": "Both locations must be resolved by the geocoding service before route comparison."}
+    p1, p2 = orig_pts[0], dest_pts[0]
 
     req = RouteCalculateRequest(origin=p1, destination=p2, optimization_mode=OptimizationMode.BALANCED)
     raw = await get_routing_provider().get_routes(p1, p2)
@@ -111,13 +112,21 @@ async def tool_compare_routes(origin_query: str, dest_query: str) -> Dict[str, A
 async def tool_get_weather(query: str) -> Dict[str, Any]:
     geo = get_geocoding_provider()
     pts = await geo.search(query, limit=1)
-    p = pts[0] if pts else GeoPoint(lat=18.5204, lng=73.8567, address=query)
+    if not pts:
+        return {"error": f"Weather location '{query}' could not be geocoded."}
+    p = pts[0]
     weather = await get_weather_provider().get_weather(p.lat, p.lng)
     return weather.to_dict()
 
 
-async def tool_calculate_cost(fuel_litres: float, distance_km: float, duration_min: float, tolls_inr: float = 0.0) -> Dict[str, Any]:
-    f_cost = fuel_litres * settings.DEFAULT_PETROL_PRICE_INR
+async def tool_calculate_cost(
+    fuel_litres: float,
+    distance_km: float,
+    duration_min: float,
+    tolls_inr: float = 0.0,
+    fuel_price_inr: Optional[float] = None,
+) -> Dict[str, Any]:
+    f_cost = fuel_litres * (fuel_price_inr or settings.DEFAULT_PETROL_PRICE_INR)
     breakdown = PhysicsEngine.calculate_total_route_cost(
         fuel_cost_inr=f_cost,
         toll_cost_inr=tolls_inr,
@@ -136,19 +145,20 @@ class AIAssistantAgent:
         cls,
         message: str,
         history: Optional[List[Dict[str, str]]] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        allow_external: bool = True,
     ) -> Dict[str, Any]:
         msg_lower = message.lower()
         tools_executed = []
 
         # Check if user has an external LLM configured (Gemini, OpenAI, Anthropic, etc.)
-        if settings.LLM_PROVIDER == "gemini" and settings.GEMINI_API_KEY:
+        if allow_external and settings.LLM_PROVIDER == "gemini" and settings.GEMINI_API_KEY:
             try:
                 return await cls._call_gemini(message, history, context)
             except Exception as e:
                 logger.warning(f"Gemini agent call failed: {e}. Using deterministic reasoning engine.")
 
-        if settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
+        if allow_external and settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
             try:
                 return await cls._call_openai(message, history, context)
             except Exception as e:
@@ -160,13 +170,16 @@ class AIAssistantAgent:
 
         # 1. Weather inquiry
         if any(w in msg_lower for w in ["weather", "rain", "rainy", "fog", "storm", "temperature"]):
-            # Extract city name or use Pune as default
-            target = "Pune"
+            target = None
             for city in ["mumbai", "pune", "delhi", "bangalore", "bengaluru", "hyderabad", "hinjawadi"]:
                 if city in msg_lower:
                     target = city.capitalize()
                     break
+            if not target:
+                return {"reply": "Which city or place should I check the weather for?", "tool_calls_made": []}
             w_res = await tool_get_weather(target)
+            if "error" in w_res:
+                return {"reply": w_res["error"], "tool_calls_made": []}
             tools_executed.append({"tool": "get_weather", "input": {"location": target}, "output": w_res})
             reply = (
                 f"🌤️ **Weather Intelligence for {target}**:\n\n"
@@ -181,12 +194,13 @@ class AIAssistantAgent:
 
         # 2. Compare routes inquiry
         elif any(w in msg_lower for w in ["compare", "difference", "which route", "options", "alternatives"]):
-            orig = "Shivajinagar, Pune"
-            dest = "Hinjawadi, Pune"
-            if "mumbai" in msg_lower:
-                orig = "Pune"
-                dest = "Mumbai"
+            match = re.search(r"\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+and\s+compare|$)", message, re.IGNORECASE)
+            if not match:
+                return {"reply": "Name both places to compare routes, for example: compare Kothrud to Pune Airport.", "tool_calls_made": []}
+            orig, dest = match.group(1).strip(), match.group(2).strip()
             comp_res = await tool_compare_routes(orig, dest)
+            if "error" in comp_res:
+                return {"reply": comp_res["error"], "tool_calls_made": []}
             tools_executed.append({"tool": "compare_routes", "input": {"origin": orig, "destination": dest}, "output": comp_res})
 
             lines = [f"📊 **Route Comparison Matrix ({orig} ➔ {dest})**:\n"]
@@ -199,11 +213,23 @@ class AIAssistantAgent:
 
         # 3. Cost inquiry
         elif any(w in msg_lower for w in ["cost", "how much", "expense", "toll", "price", "rupees", "inr"]):
-            cost_res = await tool_calculate_cost(fuel_litres=3.5, distance_km=42.0, duration_min=50.0, tolls_inr=55.0)
+            route = (context or {}).get("current_route") if isinstance(context, dict) else None
+            if not isinstance(route, dict):
+                return {"reply": "Calculate or select a route first so I can estimate its actual distance, time, and fuel cost.", "tool_calls_made": []}
+            vehicle = (context or {}).get("selected_vehicle", {}) if isinstance(context, dict) else {}
+            fuel_price = float(vehicle.get("fuel_price_inr") or settings.DEFAULT_PETROL_PRICE_INR)
+            fuel_unit = "kWh" if vehicle.get("fuel_type") == "ELECTRIC" else "L"
+            cost_res = await tool_calculate_cost(
+                fuel_litres=float(route.get("fuel_litres") or 0),
+                distance_km=float(route.get("distance_km") or 0),
+                duration_min=float(route.get("duration_min") or 0),
+                tolls_inr=float(route.get("toll_cost_inr") or 0),
+                fuel_price_inr=fuel_price,
+            )
             tools_executed.append({"tool": "calculate_cost", "input": {"fuel_litres": 3.5, "distance_km": 42.0, "duration_min": 50.0}, "output": cost_res})
             reply = (
                 f"💰 **Total Trip Cost Breakdown** (Calculated with dynamic commercial rates):\n\n"
-                f"- **Fuel Cost**: ₹{cost_res['fuel_cost_inr']} (at ₹{settings.DEFAULT_PETROL_PRICE_INR}/L)\n"
+                f"- **Fuel Cost**: ₹{cost_res['fuel_cost_inr']} (at ₹{fuel_price}/{fuel_unit})\n"
                 f"- **Toll Charges**: ₹{cost_res['toll_cost_inr']}\n"
                 f"- **Driver Time Cost**: ₹{cost_res['driver_cost_inr']} (at ₹{settings.DEFAULT_DRIVER_HOURLY_WAGE_INR}/hr)\n"
                 f"- **Vehicle Wear & Maintenance**: ₹{cost_res['maintenance_cost_inr']} (at ₹{settings.DEFAULT_MAINTENANCE_PER_KM_INR}/km)\n"
@@ -225,42 +251,9 @@ class AIAssistantAgent:
                 "suggested_action": {"type": "navigate", "tab": "optimize"}
             }
 
-        # 5. Default route search and intelligent scoring
+        # Route creation uses POST /ai/route so it can validate intent and geocoding.
         else:
-            orig = "Pune Station"
-            dest = "Hinjawadi IT Park"
-            mode = "Balanced"
-
-            if "fast" in msg_lower:
-                mode = "Fastest"
-            elif "cheap" in msg_lower:
-                mode = "Cheapest"
-            elif "fuel" in msg_lower or "efficient" in msg_lower:
-                mode = "Fuel Efficient"
-
-            # Parse simple "from X to Y" patterns
-            match = re.search(r"from\s+([^to]+)\s+to\s+(.+)", message, re.IGNORECASE)
-            if match:
-                orig = match.group(1).strip()
-                dest = match.group(2).strip()
-
-            route_res = await tool_get_route(orig, dest, mode=mode)
-            tools_executed.append({"tool": "get_route", "input": {"origin": orig, "destination": dest, "mode": mode}, "output": route_res})
-
-            if "error" in route_res:
-                return {"reply": f"⚠️ {route_res['error']}. Please try specifying specific locations.", "tool_calls_made": tools_executed}
-
-            reply = (
-                f"🧭 **Route Intelligence Analysis for {orig} ➔ {dest}**:\n\n"
-                f"- **Strategy Mode**: `{mode}`\n"
-                f"- **Recommended**: **{route_res['recommended_route']}** (Score: **{route_res['overall_score']}/100**)\n"
-                f"- **Distance**: {route_res['distance_km']} km\n"
-                f"- **Estimated Time**: {route_res['duration_min']} minutes\n"
-                f"- **Fuel Consumption**: {route_res['fuel_litres']} Litres (~₹{route_res['total_cost_inr']} total trip cost)\n"
-                f"- **Live Traffic**: {route_res['traffic_level']} | **Weather**: {route_res['weather']}\n\n"
-                f"🔍 **Why This Route?**\n{route_res['reason']}"
-            )
-            return {"reply": reply, "tool_calls_made": tools_executed}
+            return {"reply": "Tell me the destination and, if you are not at the start, the starting place. I will resolve both places before calculating a real route.", "tool_calls_made": []}
 
     @classmethod
     async def _call_openai(cls, message: str, history: Optional[List[Dict[str, str]]], context: Optional[Dict[str, Any]]) -> Dict[str, Any]:

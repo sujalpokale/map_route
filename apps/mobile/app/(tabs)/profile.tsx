@@ -1,39 +1,101 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   User,
   Truck,
-  Package,
   Camera,
   Settings,
-  Shield,
   LogOut,
   ChevronRight,
   BatteryCharging,
-  Fuel,
   Award,
+  Copy,
+  Pencil,
 } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { THEME } from '@/constants/theme';
 import { Header } from '@/components/ui/Header';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { authApi } from '@/services/api/auth';
+import { useRouteStore } from '@/stores/useRouteStore';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
-  const { vehicles, selectedVehicleId, selectVehicle } = useVehicleStore();
+  const { user, account, subscription, logout, updateProfile, isLoading, clearError } = useAuthStore();
+  const { vehicles, selectedVehicleId, selectVehicle, updateVehicleEconomics } = useVehicleStore();
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(user?.name || '');
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === selectedVehicleId) || vehicles[0];
+  const [efficiencyDraft, setEfficiencyDraft] = useState(String(selectedVehicle.efficiency_kmpl));
+  const [fuelPriceDraft, setFuelPriceDraft] = useState(String(selectedVehicle.fuel_price_inr));
+  const [savingVehicle, setSavingVehicle] = useState(false);
 
-  const handleLogout = () => {
-    logout();
+  useEffect(() => { setNameDraft(user?.name || ''); }, [user?.name]);
+  useEffect(() => {
+    setEfficiencyDraft(String(selectedVehicle.efficiency_kmpl));
+    setFuelPriceDraft(String(selectedVehicle.fuel_price_inr));
+  }, [selectedVehicle.id, selectedVehicle.efficiency_kmpl, selectedVehicle.fuel_price_inr]);
+
+  const handleLogout = async () => {
+    await logout();
     router.replace('/(auth)/login');
+  };
+
+  const copyUserId = async () => {
+    if (!account?.user_id) return;
+    await Clipboard.setStringAsync(account.user_id);
+    Alert.alert('Copied', 'User ID copied to clipboard.');
+  };
+
+  const saveName = async () => {
+    clearError();
+    if (await updateProfile({ name: nameDraft.trim() })) setEditingName(false);
+    else Alert.alert('Could not update profile', useAuthStore.getState().error || 'Please try again.');
+  };
+
+  const saveVehicleEconomics = async () => {
+    const efficiency = Number(efficiencyDraft);
+    const fuelPrice = Number(fuelPriceDraft);
+    if (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 500) {
+      Alert.alert('Check average efficiency', 'Enter a value greater than 0 and no more than 500.');
+      return;
+    }
+    if (!Number.isFinite(fuelPrice) || fuelPrice <= 0 || fuelPrice > 10000) {
+      Alert.alert('Check fuel price', 'Enter a value greater than 0 and no more than 10,000.');
+      return;
+    }
+
+    const vehicleSettings = Object.fromEntries(vehicles.map((vehicle) => [
+      vehicle.id,
+      {
+        efficiency_kmpl: vehicle.id === selectedVehicle.id ? efficiency : vehicle.efficiency_kmpl,
+        fuel_price_inr: vehicle.id === selectedVehicle.id ? fuelPrice : vehicle.fuel_price_inr,
+      },
+    ]));
+    setSavingVehicle(true);
+    const response = await authApi.updatePreferences({ vehicle_settings: vehicleSettings });
+    setSavingVehicle(false);
+    if (!response.data) {
+      Alert.alert('Could not save vehicle settings', response.error || 'Please try again.');
+      return;
+    }
+
+    updateVehicleEconomics(selectedVehicle.id, efficiency, fuelPrice);
+    const routeStore = useRouteStore.getState();
+    if (routeStore.origin && routeStore.destination) {
+      void routeStore.calculateRoutes(selectedVehicle.vehicle_type);
+    }
+    Alert.alert('Vehicle settings saved', 'Route fuel and cost estimates will use these values.');
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Driver Profile & Telematics" subtitle={user?.organization || 'Commercial Logistics'} />
+      <Header title="My Profile" subtitle="Account and subscription" />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* User Card */}
@@ -42,31 +104,35 @@ export default function ProfileScreen() {
             <User size={28} color="#090D16" />
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user?.name || 'Sujal Pokale'}</Text>
-            <Text style={styles.userRole}>ROLE: {user?.role || 'COMMERCIAL DRIVER'}</Text>
-            <Text style={styles.userEmail}>{user?.email || 'driver@routeintelligence.ai'}</Text>
+            <Text style={styles.userName}>{user?.name || 'Account'}</Text>
+            <Text style={styles.userRole}>ROLE: {account?.role?.toUpperCase() || 'USER'}</Text>
+            <Text style={styles.userEmail}>{user?.email || ''}</Text>
           </View>
+          {!editingName ? <TouchableOpacity onPress={() => setEditingName(true)} accessibilityLabel="Edit profile name" style={styles.copyButton}><Pencil size={17} color={THEME.colors.primaryLight} /></TouchableOpacity> : null}
         </View>
 
-        {/* Lifetime Telematics Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Award size={16} color={THEME.colors.primaryLight} />
-            <Text style={styles.statNumber}>{user?.total_trips || 142}</Text>
-            <Text style={styles.statLabel}>Trips Logged</Text>
+        {editingName ? <View style={styles.accountDetails}>
+          <Input label="Name" value={nameDraft} onChangeText={setNameDraft} autoCapitalize="words" />
+          <Text style={styles.detailHint}>Email and phone changes require verification and are not available yet.</Text>
+          <View style={styles.editActions}>
+            <Button title="Cancel" onPress={() => { setEditingName(false); setNameDraft(user?.name || ''); }} variant="secondary" size="sm" />
+            <Button title="Save name" onPress={saveName} loading={isLoading} disabled={!nameDraft.trim()} size="sm" />
           </View>
-          <View style={styles.statBox}>
-            <Fuel size={16} color={THEME.colors.success} />
-            <Text style={[styles.statNumber, { color: THEME.colors.success }]}>
-              {user?.total_fuel_saved_litres || 128.4} L
-            </Text>
-            <Text style={styles.statLabel}>Fuel Saved</Text>
+        </View> : null}
+
+        <View style={styles.accountDetails}>
+          <Text style={styles.detailLabel}>USER ID</Text>
+          <View style={styles.userIdRow}>
+            <Text selectable style={styles.detailValue}>{account?.user_id || 'Unavailable'}</Text>
+            {account?.user_id ? <TouchableOpacity onPress={copyUserId} accessibilityLabel="Copy user ID" style={styles.copyButton}><Copy size={16} color={THEME.colors.primaryLight} /></TouchableOpacity> : null}
           </View>
-          <View style={styles.statBox}>
-            <Truck size={16} color={THEME.colors.warning} />
-            <Text style={styles.statNumber}>{Math.round(user?.total_distance_km || 3840)} km</Text>
-            <Text style={styles.statLabel}>Total Distance</Text>
-          </View>
+          <Text style={styles.detailLabel}>ACCOUNT STATUS</Text>
+          <Text style={styles.detailValue}>{account?.status || 'Unavailable'}</Text>
+          <Text style={styles.detailLabel}>MEMBER SINCE</Text>
+          <Text style={styles.detailValue}>{account?.created_at ? new Date(account.created_at).toLocaleDateString() : 'Unavailable'}</Text>
+          <Text style={styles.detailLabel}>SUBSCRIPTION</Text>
+          <Text style={styles.detailValue}>{subscription?.plan?.toUpperCase() || 'FREE'} · {subscription?.status || 'active'}</Text>
+          {subscription?.expiry_date ? <Text style={styles.detailHint}>Valid until {new Date(subscription.expiry_date).toLocaleDateString()}</Text> : null}
         </View>
 
         {/* Vehicle Fleet Garage */}
@@ -97,7 +163,7 @@ export default function ProfileScreen() {
                 <View style={styles.vehDetails}>
                   <Text style={styles.vehName}>{veh.name}</Text>
                   <Text style={styles.vehPlate}>
-                    {veh.license_plate} • {veh.fuel_type} • {veh.efficiency_kmpl} km/L
+                    {veh.license_plate} • {veh.efficiency_kmpl} {veh.vehicle_type === 'EV' ? 'km/kWh' : 'km/L'} • ₹{veh.fuel_price_inr}/{veh.vehicle_type === 'EV' ? 'kWh' : 'L'}
                   </Text>
                 </View>
 
@@ -111,16 +177,40 @@ export default function ProfileScreen() {
           })}
         </View>
 
+        <View style={styles.accountDetails}>
+          <Text style={styles.sectionTitle}>Vehicle fuel estimates</Text>
+          <Text style={styles.detailHint}>Select a vehicle above, then enter its real-world average and local fuel or electricity price.</Text>
+          <Text style={styles.detailLabel}>AVERAGE ({selectedVehicle.vehicle_type === 'EV' ? 'KM/KWH' : 'KM/L'})</Text>
+          <TextInput
+            value={efficiencyDraft}
+            onChangeText={setEfficiencyDraft}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            style={styles.economicsInput}
+            accessibilityLabel="Vehicle average efficiency"
+          />
+          <Text style={styles.detailLabel}>PRICE (₹/{selectedVehicle.vehicle_type === 'EV' ? 'KWH' : 'L'})</Text>
+          <TextInput
+            value={fuelPriceDraft}
+            onChangeText={setFuelPriceDraft}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            style={styles.economicsInput}
+            accessibilityLabel="Fuel or electricity price"
+          />
+          <Button title="Save vehicle settings" onPress={saveVehicleEconomics} loading={savingVehicle} disabled={savingVehicle} size="sm" />
+        </View>
+
         {/* Feature Shortcuts */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tools & Workflows</Text>
 
           <TouchableOpacity
-            onPress={() => router.push('/deliveries')}
+            onPress={() => router.push('/premium')}
             style={styles.menuItem}
           >
-            <Package size={18} color={THEME.colors.primaryLight} />
-            <Text style={styles.menuText}>Delivery Manifest & POD</Text>
+            <Award size={18} color={THEME.colors.warning} />
+            <Text style={styles.menuText}>Manage Premium</Text>
             <ChevronRight size={18} color={THEME.colors.textMuted} />
           </TouchableOpacity>
 
@@ -205,6 +295,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  accountDetails: {
+    backgroundColor: THEME.colors.card,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.cardBorder,
+    padding: 14,
+    marginBottom: 20,
+  },
+  detailLabel: { color: THEME.colors.textMuted, fontSize: 10, fontWeight: '700', marginTop: 8 },
+  detailValue: { color: THEME.colors.text, fontSize: 14, fontWeight: '600', marginTop: 3 },
+  economicsInput: {
+    minHeight: 46,
+    paddingHorizontal: 12,
+    marginTop: 5,
+    marginBottom: 7,
+    color: THEME.colors.text,
+    backgroundColor: THEME.colors.cardElevated,
+    borderWidth: 1,
+    borderColor: THEME.colors.cardBorder,
+    borderRadius: THEME.radius.sm,
+    fontSize: 15,
+  },
+  userIdRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  copyButton: { padding: 8 },
+  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  detailHint: { color: THEME.colors.textSecondary, fontSize: 12, marginTop: 4 },
   statsRow: {
     flexDirection: 'row',
     gap: 8,

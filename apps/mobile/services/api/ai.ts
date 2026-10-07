@@ -25,9 +25,6 @@ export const aiService = {
     if (response.data) {
       return response.data;
     }
-    return {
-      reply: "I'm having trouble connecting to the Route Intelligence Engine. Please check your network connection.",
-      tool_calls_made: [],
-    };
+    throw new Error(response.error || 'Unable to connect to the Route Intelligence Engine.');
   },
 };

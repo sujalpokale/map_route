@@ -9,6 +9,8 @@ interface VehicleState {
   getSelectedVehicle: () => VehicleProfile;
   selectVehicle: (id: string) => void;
   addVehicle: (vehicle: VehicleProfile) => void;
+  updateVehicleEconomics: (id: string, efficiency_kmpl: number, fuel_price_inr: number) => void;
+  resetVehicles: () => void;
   updateBattery: (pct: number) => void;
 }
 
@@ -92,6 +94,15 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
 
   addVehicle: (vehicle) =>
     set((state) => ({ vehicles: [...state.vehicles, vehicle] })),
+
+  updateVehicleEconomics: (id, efficiency_kmpl, fuel_price_inr) =>
+    set((state) => ({
+      vehicles: state.vehicles.map((vehicle) =>
+        vehicle.id === id ? { ...vehicle, efficiency_kmpl, fuel_price_inr } : vehicle
+      ),
+    })),
+
+  resetVehicles: () => set({ vehicles: DEFAULT_VEHICLES, selectedVehicleId: 'veh_car_02' }),
 
   updateBattery: (pct) =>
     set((state) => ({

@@ -153,7 +153,9 @@ export default function RoutesScreen() {
           fresh.coords.latitude,
           fresh.coords.longitude,
           fresh.coords.speed ? fresh.coords.speed * 3.6 : 0,
-          fresh.coords.heading || 0
+          fresh.coords.heading,
+          fresh.coords.accuracy,
+          fresh.coords.altitude
         );
 
         try {
@@ -341,7 +343,8 @@ export default function RoutesScreen() {
       startNavigation(
         selectedRoute.steps,
         selectedRoute.distance_km,
-        selectedRoute.duration_min
+        selectedRoute.duration_min,
+        selectedRoute.coordinates
       );
       router.push({
         pathname: '/navigation/[routeId]',

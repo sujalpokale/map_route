@@ -23,9 +23,7 @@ The official **Route Intelligence Mobile Application** built with **React Native
    - Hands-free voice commands, grounded tool execution, and physics-based route explanations.
 6. **Computer Vision & OCR Address Scanner**:
    - Extract street addresses and drop-off waypoints directly from delivery invoices and shipping labels.
-7. **Delivery Manifest & Proof of Delivery (POD)**:
-   - Geotagged photo proof, digital signatures, and customer contact actions.
-8. **Commercial Telematics & Fleet Garage**:
+7. **Commercial Telematics & Fleet Garage**:
    - Fuel savings analytics, CO₂ emissions tracking, vehicle profiles (Car, Van, Truck, and EV state of charge).
 
 ---
@@ -49,7 +47,6 @@ apps/mobile/
 │   │   ├── [routeId].tsx
 │   │   └── active-trip.tsx
 │   ├── route/details.tsx           # 9-Factor IRS Score Deep Inspection
-│   ├── deliveries/index.tsx        # Delivery Manifest & Proof of Delivery
 │   ├── vehicles/index.tsx          # Vehicle Garage & EV SOC Manager
 │   ├── ocr/scan.tsx                # Camera Waybill & Invoice Scanner
 │   └── settings/index.tsx          # Settings, Units, and Audio Guidance
@@ -58,7 +55,6 @@ apps/mobile/
 │   ├── map/                        # Abstracted Map View, Pins & Traffic Overlay
 │   ├── route/                      # RouteCard, IRSScoreBreakdown, StopList, OptimizationSelector
 │   ├── navigation/                 # TurnManeuverCard, SpeedometerHUD, TripProgressBar, DeviationBanner
-│   ├── delivery/                   # DeliveryCard, ProofOfDeliveryModal
 │   ├── assistant/                  # AIChatBubble, VoiceWaveform, QuickActionChips
 │   └── analytics/                  # ROICard & Telematics Stats
 ├── services/api/                   # Typed API Clients (Routes, Geocode, ML Predict, AI, OCR, Fleet)

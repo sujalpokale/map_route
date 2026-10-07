@@ -1,104 +1,50 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Lock, Shield, Truck, User } from 'lucide-react-native';
+import { Lock, Mail } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { UserRole } from '@/types';
+import { authApi } from '@/services/api/auth';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, isLoading } = useAuthStore();
-
-  const [email, setEmail] = useState('sujal@routeintelligence.ai');
-  const [password, setPassword] = useState('••••••••••••');
-  const [role, setRole] = useState<UserRole>('DRIVER');
+  const { login, isLoading, error, clearError } = useAuthStore();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    const success = await login(email, role);
-    if (success) {
-      router.replace('/(tabs)/home');
-    }
+    const ok = await login(email, password);
+    if (ok) router.replace('/(tabs)/home');
+  };
+
+  const handleForgotPassword = async () => {
+    const result = await authApi.forgotPassword(email.trim().toLowerCase());
+    Alert.alert('Password reset', result.data?.message || result.error || 'Password reset delivery is not configured yet.');
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Sign In</Text>
-          <Text style={styles.subtitle}>
-            Enter your credentials to connect to the Route Intelligence Gateway.
-          </Text>
-        </View>
-
-        {/* Role Selector */}
-        <View style={styles.roleContainer}>
-          <Text style={styles.roleLabel}>OPERATING ROLE</Text>
-          <View style={styles.roleButtons}>
-            {(['DRIVER', 'FLEET_MANAGER', 'USER'] as UserRole[]).map((r) => (
-              <TouchableOpacity
-                key={r}
-                onPress={() => setRole(r)}
-                style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-              >
-                <Text style={[styles.roleText, role === r && styles.roleTextActive]}>
-                  {r.replace('_', ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Form Inputs */}
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={styles.eyebrow}>ROUTE INTELLIGENCE</Text>
+        <Text style={styles.title}>Welcome back</Text>
+        <Text style={styles.subtitle}>Sign in to your account to continue.</Text>
         <View style={styles.form}>
-          <Input
-            label="Email Address"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="driver@logistics.com"
-            icon={<Mail size={18} color={THEME.colors.textMuted} />}
-          />
-
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            secureTextEntry
-            icon={<Lock size={18} color={THEME.colors.textMuted} />}
-          />
-
-          <TouchableOpacity style={styles.forgotBtn}>
-            <Text style={styles.forgotText}>Forgot credentials?</Text>
+          <Input label="Email" value={email} onChangeText={(value) => { clearError(); setEmail(value); }} placeholder="you@example.com" keyboardType="email-address" icon={<Mail size={18} color={THEME.colors.textMuted} />} />
+          <Input label="Password" value={password} onChangeText={(value) => { clearError(); setPassword(value); }} placeholder="Enter your password" secureTextEntry icon={<Lock size={18} color={THEME.colors.textMuted} />} />
+          {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity style={styles.forgot} onPress={handleForgotPassword}>
+            <Text style={styles.link}>Forgot password?</Text>
           </TouchableOpacity>
-
-          <Button
-            title="Authenticate & Enter"
-            onPress={handleLogin}
-            variant="primary"
-            size="lg"
-            loading={isLoading}
-            style={{ marginTop: 8 }}
-          />
-
-          <Button
-            title="Skip & Open Live Map"
-            onPress={() => router.replace('/(tabs)/home')}
-            variant="secondary"
-            size="md"
-            style={{ marginTop: 10 }}
-          />
-        </View>
-
-        {/* Quick Demo Access */}
-        <View style={styles.demoCard}>
-          <Shield size={16} color={THEME.colors.primaryLight} />
-          <Text style={styles.demoText}>
-            Pre-configured with Commercial Fleet Driver demo profile. Tap Authenticate to enter.
-          </Text>
+          <Button title="Sign In" onPress={handleLogin} loading={isLoading} disabled={!email || !password} size="lg" />
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>New to Route Intelligence?</Text>
+            <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+              <Text style={styles.link}>Create account</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -106,95 +52,15 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.background,
-  },
-  scrollContent: {
-    padding: THEME.spacing.screen,
-    justifyContent: 'center',
-    flexGrow: 1,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: THEME.colors.textSecondary,
-    fontSize: THEME.typography.sizes.sm,
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  roleContainer: {
-    marginBottom: 20,
-  },
-  roleLabel: {
-    color: THEME.colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  roleButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  roleBtn: {
-    flex: 1,
-    backgroundColor: THEME.colors.cardElevated,
-    borderWidth: 1,
-    borderColor: THEME.colors.cardBorder,
-    paddingVertical: 10,
-    borderRadius: THEME.radius.md,
-    alignItems: 'center',
-  },
-  roleBtnActive: {
-    backgroundColor: THEME.colors.primaryGlow,
-    borderColor: THEME.colors.primary,
-  },
-  roleText: {
-    color: THEME.colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  roleTextActive: {
-    color: THEME.colors.primaryLight,
-  },
-  form: {
-    backgroundColor: THEME.colors.card,
-    borderRadius: THEME.radius.lg,
-    padding: THEME.spacing.lg,
-    borderWidth: 1,
-    borderColor: THEME.colors.cardBorder,
-  },
-  forgotBtn: {
-    alignSelf: 'flex-end',
-    marginBottom: 16,
-  },
-  forgotText: {
-    color: THEME.colors.primaryLight,
-    fontSize: THEME.typography.sizes.xs,
-    fontWeight: '600',
-  },
-  demoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(6, 182, 212, 0.08)',
-    borderRadius: THEME.radius.md,
-    padding: 12,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: THEME.colors.primaryGlow,
-  },
-  demoText: {
-    color: THEME.colors.textSecondary,
-    fontSize: 11,
-    flex: 1,
-    lineHeight: 16,
-  },
+  container: { flex: 1, backgroundColor: THEME.colors.background },
+  content: { flexGrow: 1, justifyContent: 'center', padding: THEME.spacing.screen },
+  eyebrow: { color: THEME.colors.primaryLight, fontWeight: '800', fontSize: 12, marginBottom: 12 },
+  title: { color: THEME.colors.text, fontSize: 28, fontWeight: '800' },
+  subtitle: { color: THEME.colors.textSecondary, fontSize: 14, marginTop: 8, marginBottom: 24 },
+  form: { backgroundColor: THEME.colors.card, borderColor: THEME.colors.cardBorder, borderWidth: 1, borderRadius: THEME.radius.lg, padding: THEME.spacing.lg },
+  error: { color: THEME.colors.danger, fontSize: 13, marginBottom: 8 },
+  forgot: { alignSelf: 'flex-end', paddingVertical: 8, marginBottom: 8 },
+  link: { color: THEME.colors.primaryLight, fontSize: 13, fontWeight: '700' },
+  footer: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, flexWrap: 'wrap' },
+  footerText: { color: THEME.colors.textSecondary, fontSize: 13 },
 });

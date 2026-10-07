@@ -10,7 +10,7 @@ export interface TrafficOverlayProps {
 }
 
 export const TrafficOverlay: React.FC<TrafficOverlayProps> = ({
-  trafficLevel = 'Moderate',
+  trafficLevel = 'Unavailable',
   weatherCondition = 'Clear 28°C',
   routeScore = 93.4,
 }) => {

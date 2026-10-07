@@ -151,7 +151,9 @@ export default function HomeScreen() {
               lastKnown.coords.latitude,
               lastKnown.coords.longitude,
               lastKnown.coords.speed ? lastKnown.coords.speed * 3.6 : 0,
-              lastKnown.coords.heading || 0
+              lastKnown.coords.heading,
+              lastKnown.coords.accuracy,
+              lastKnown.coords.altitude
             );
             setOrigin({
               lat: lastKnown.coords.latitude,
@@ -167,7 +169,9 @@ export default function HomeScreen() {
             fresh.coords.latitude,
             fresh.coords.longitude,
             fresh.coords.speed ? fresh.coords.speed * 3.6 : 0,
-            fresh.coords.heading || 0
+            fresh.coords.heading,
+            fresh.coords.accuracy,
+            fresh.coords.altitude
           );
 
           // 3. Reverse Geocode to Real Local Area & City Name
@@ -209,7 +213,9 @@ export default function HomeScreen() {
                 newLoc.coords.latitude,
                 newLoc.coords.longitude,
                 newLoc.coords.speed ? newLoc.coords.speed * 3.6 : 0,
-                newLoc.coords.heading || 0
+                newLoc.coords.heading,
+                newLoc.coords.accuracy,
+                newLoc.coords.altitude
               );
             }
           );
@@ -308,13 +314,31 @@ export default function HomeScreen() {
 
   const handleRecenter = async () => {
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       updateCoordinates(
         loc.coords.latitude,
         loc.coords.longitude,
-        loc.coords.speed ? loc.coords.speed * 3.6 : 35,
-        loc.coords.heading || 0
+        loc.coords.speed == null ? null : loc.coords.speed * 3.6,
+        loc.coords.heading,
+        loc.coords.accuracy,
+        loc.coords.altitude
       );
+      const [place] = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+      const address = place
+        ? [place.street, place.district, place.city, place.region].filter(Boolean).join(', ')
+        : '';
+      setOrigin({
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+        name: place?.name || place?.street || place?.district || 'Your Live Location',
+        address: address || `${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`,
+        city: place?.city || place?.district || '',
+      });
     } catch {
       // fallback
     }
@@ -325,7 +349,8 @@ export default function HomeScreen() {
       startNavigation(
         selectedRoute.steps,
         selectedRoute.distance_km,
-        selectedRoute.duration_min
+        selectedRoute.duration_min,
+        selectedRoute.coordinates
       );
       router.push({
         pathname: '/navigation/[routeId]',
@@ -333,14 +358,6 @@ export default function HomeScreen() {
       });
     }
   };
-
-  // Preset Popular Destinations for Google Maps Quick Pick
-  const popularShortcuts: GeoPoint[] = [
-    { lat: 18.5987, lng: 73.7178, name: 'Hinjawadi Phase 1 Tech Hub', address: 'Rajiv Gandhi Infotech Park', city: 'Pune' },
-    { lat: 18.5284, lng: 73.8744, name: 'Pune Central Railway Station', address: 'Agarkar Nagar', city: 'Pune' },
-    { lat: 18.5529, lng: 73.9372, name: 'Magarpatta Cybercity', address: 'Hadapsar Corridor', city: 'Pune' },
-    { lat: 18.5679, lng: 73.9143, name: 'Viman Nagar Cargo Airport', address: 'Lohegaon Road', city: 'Pune' },
-  ];
 
   const isPeek = sheetSnap === 'PEEK';
 
@@ -543,10 +560,14 @@ export default function HomeScreen() {
                 <Text style={styles.peekTitle} numberOfLines={1}>
                   {destination?.name
                     ? `${destination.name} (${Math.round(selectedRoute?.duration_min || 25)} min • ${selectedVehicle.vehicle_type})`
-                    : 'Where to next? • Tap or swipe up'}
+                    : origin?.name || (currentLocation ? 'Your Live Location' : 'Location unavailable')}
                 </Text>
                 <Text style={styles.peekSub} numberOfLines={1}>
-                  {destination ? `Best route for ${selectedVehicle.name} ready` : 'Select vehicle & destination to compare time, fuel & cost'}
+                  {destination
+                    ? `Best route for ${selectedVehicle.name} ready`
+                    : origin?.address || (currentLocation
+                      ? `${currentLocation.latitude.toFixed(5)}, ${currentLocation.longitude.toFixed(5)}`
+                      : 'Allow location access to show your address')}
                 </Text>
               </View>
             </View>
@@ -753,24 +774,29 @@ export default function HomeScreen() {
                   </View>
                 </View>
 
-                {/* Quick Shortcuts List */}
-                <View style={styles.shortcutsList}>
-                  {popularShortcuts.map((item, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.shortcutRow}
-                      onPress={() => handleSelectPlace(item)}
-                    >
-                      <View style={styles.shortcutIconBg}>
-                        <MapPin size={16} color="#8AB4F8" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.shortcutName}>{item.name}</Text>
-                        <Text style={styles.shortcutAddr}>{item.address}</Text>
-                      </View>
-                      <ArrowRight size={14} color="#9AA0A6" />
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.locationSummary}>
+                  <View style={styles.shortcutIconBg}>
+                    <MapPin size={16} color="#8AB4F8" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locationSummaryLabel}>Current location</Text>
+                    <Text style={styles.shortcutName} numberOfLines={1}>
+                      {origin?.name || (currentLocation ? 'Your Live Location' : 'Waiting for location')}
+                    </Text>
+                    <Text style={styles.shortcutAddr} numberOfLines={2}>
+                      {origin?.address || (currentLocation
+                        ? `${currentLocation.latitude.toFixed(5)}, ${currentLocation.longitude.toFixed(5)}`
+                        : 'Allow location access to show your address')}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh current location"
+                    onPress={handleRecenter}
+                    style={styles.locationRefreshButton}
+                  >
+                    <Crosshair size={18} color="#8AB4F8" />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -1387,18 +1413,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  shortcutsList: {
-    gap: 8,
-  },
-  shortcutRow: {
+  locationSummary: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: '#303134',
     borderRadius: 12,
-    padding: 11,
+    padding: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  locationSummaryLabel: {
+    color: '#9AA0A6',
+    fontSize: 10,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  locationRefreshButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: 'rgba(26, 115, 232, 0.15)',
   },
   shortcutIconBg: {
     width: 34,

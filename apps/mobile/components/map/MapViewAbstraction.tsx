@@ -26,6 +26,7 @@ export interface MapViewAbstractionProps {
   waypoints?: GeoPoint[];
   stops?: StopItem[];
   activeRoute?: CandidateRoute | null;
+  activeProgressPct?: number;
   currentLocation?: { latitude: number; longitude: number; heading?: number } | null;
   onMapPress?: (coords: { latitude: number; longitude: number }) => void;
   onRecenter?: () => void;
@@ -41,6 +42,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   waypoints = [],
   stops = [],
   activeRoute,
+  activeProgressPct = 0,
   currentLocation,
   onMapPress,
   onRecenter,
@@ -53,8 +55,9 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   const isMapReadyRef = useRef<boolean>(false);
   const [mapLayer, setMapLayer] = useState<'standard' | 'satellite' | 'dark'>('standard');
 
-  const centerLat = currentLocation?.latitude || origin?.lat || 18.5204;
-  const centerLng = currentLocation?.longitude || origin?.lng || 73.8567;
+  const centerLat = currentLocation?.latitude ?? origin?.lat ?? destination?.lat ?? 20.5937;
+  const centerLng = currentLocation?.longitude ?? origin?.lng ?? destination?.lng ?? 78.9629;
+  const initialZoom = currentLocation || origin || destination ? 14 : 5;
 
   // Build the static HTML template ONCE to prevent webview reloads when props change
   const staticHtml = useMemo(() => {
@@ -188,6 +191,8 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     var currentTileLayer;
     var routeLine;
     var routeGlowLine;
+    var completedRouteLine;
+    var activeProgressPct = 0;
     var markersGroup;
     var activeCoords = [];
     var originData = null;
@@ -220,7 +225,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
         if (map) return;
         map = L.map('map', {
           center: [${centerLat}, ${centerLng}],
-          zoom: 14,
+          zoom: ${initialZoom},
           zoomControl: false,
           attributionControl: false,
           preferCanvas: true,
@@ -269,8 +274,42 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       if (activeCoords && activeCoords.length > 1) {
         if (routeGlowLine) map.removeLayer(routeGlowLine);
         if (routeLine) map.removeLayer(routeLine);
+        if (completedRouteLine) map.removeLayer(completedRouteLine);
 
-        routeGlowLine = L.polyline(activeCoords, {
+        var totalLength = 0;
+        var segmentLengths = [];
+        for (var i = 1; i < activeCoords.length; i++) {
+          var segmentLength = map.distance(activeCoords[i - 1], activeCoords[i]);
+          segmentLengths.push(segmentLength);
+          totalLength += segmentLength;
+        }
+        var targetLength = totalLength * Math.max(0, Math.min(100, activeProgressPct)) / 100;
+        var completedCoords = [activeCoords[0]];
+        var remainingCoords = [activeCoords[0]];
+        var walkedLength = 0;
+        var splitDone = targetLength <= 0;
+        for (var j = 0; j < segmentLengths.length; j++) {
+          var startPoint = activeCoords[j];
+          var endPoint = activeCoords[j + 1];
+          var length = segmentLengths[j];
+          if (!splitDone && walkedLength + length >= targetLength) {
+            var ratio = length ? (targetLength - walkedLength) / length : 0;
+            var splitPoint = [
+              startPoint[0] + (endPoint[0] - startPoint[0]) * ratio,
+              startPoint[1] + (endPoint[1] - startPoint[1]) * ratio
+            ];
+            completedCoords.push(splitPoint);
+            remainingCoords = [splitPoint, endPoint];
+            splitDone = true;
+          } else if (splitDone) {
+            remainingCoords.push(endPoint);
+          } else {
+            completedCoords.push(endPoint);
+          }
+          walkedLength += length;
+        }
+
+        routeGlowLine = L.polyline(remainingCoords, {
           color: '#174EA6',
           weight: 8,
           opacity: 0.6,
@@ -278,13 +317,18 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           lineJoin: 'round'
         }).addTo(map);
 
-        routeLine = L.polyline(activeCoords, {
+        routeLine = L.polyline(remainingCoords, {
           color: '#1A73E8',
           weight: 5.5,
           opacity: 1,
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(map);
+        if (completedCoords.length > 1) {
+          completedRouteLine = L.polyline(completedCoords, {
+            color: '#9AA0A6', weight: 5, opacity: 0.8, lineCap: 'round', lineJoin: 'round'
+          }).addTo(map);
+        }
 
         // Fit bounds ONLY when route key changes AND user hasn't zoomed in manually, or if explicit shouldFit is true
         var currentRouteKey = activeCoords.length + '_' + activeCoords[0][0] + '_' + activeCoords[activeCoords.length - 1][0];
@@ -296,6 +340,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       } else {
         if (routeGlowLine) { map.removeLayer(routeGlowLine); routeGlowLine = null; }
         if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+        if (completedRouteLine) { map.removeLayer(completedRouteLine); completedRouteLine = null; }
       }
 
       // Origin Pin (Green 'A')
@@ -433,6 +478,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     window.updateRouteData = function(data, forceFit) {
       if (!map || !data) return;
       activeCoords = data.coords || [];
+      activeProgressPct = data.progressPct || 0;
       originData = data.origin;
       destData = data.dest;
       stopsData = data.stops || [];
@@ -454,7 +500,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       }
 
       // ONLY gently follow live GPS if the user is NOT actively zooming / panning elsewhere
-      if (autoFollowGps && !userInteracted && (!activeCoords || activeCoords.length <= 1)) {
+      if (autoFollowGps && !userInteracted) {
         if (map) map.panTo([lat, lng], { animate: true });
       }
     };
@@ -481,11 +527,12 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       origin: origin || null,
       dest: destination || null,
       stops: stops || [],
+      progressPct: activeProgressPct,
     });
     webViewRef.current?.injectJavaScript?.(
       `window.updateRouteData && window.updateRouteData(${payload}, ${forceFit ? 'true' : 'false'}); true;`
     );
-  }, [activeRoute?.coordinates, origin, destination, stops]);
+  }, [activeRoute?.coordinates, origin, destination, stops, activeProgressPct]);
 
   const pushUserLocation = useCallback(() => {
     if (currentLocation?.latitude && currentLocation?.longitude) {

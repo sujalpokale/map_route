@@ -142,7 +142,9 @@ export const getTrafficColor = (level: string): string => {
       return THEME.colors.trafficHigh;
     case 'severe':
       return THEME.colors.trafficSevere;
+    case 'unavailable':
+      return THEME.colors.textMuted;
     default:
-      return THEME.colors.trafficModerate;
+      return THEME.colors.textMuted;
   }
 };

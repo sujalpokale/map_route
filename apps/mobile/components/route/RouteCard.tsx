@@ -98,6 +98,9 @@ export const RouteCard: React.FC<RouteCardProps> = ({
           trafficLevel={route.traffic_level}
           size="sm"
         />
+        {route.traffic_level.toLowerCase() !== 'unavailable' && route.traffic_delay_min > 0 ? (
+          <Badge label={`Delay: +${Math.round(route.traffic_delay_min)} min`} variant="warning" size="sm" />
+        ) : null}
         <Badge label={route.weather_condition} variant="neutral" size="sm" />
         <Badge label={route.road_quality} variant="neutral" size="sm" />
       </View>

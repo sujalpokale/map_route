@@ -90,15 +90,15 @@ class OpenMeteoWeatherProvider(BaseWeatherProvider):
                         weather_score=score
                     )
         except Exception as e:
-            logger.warning(f"Open-Meteo request failed: {e}. Using baseline weather.")
+            logger.warning(f"Open-Meteo request failed: {e}. Weather data is unavailable.")
 
         return WeatherData(
-            condition="Clear",
-            temperature_c=27.5,
+            condition="Unavailable",
+            temperature_c=0.0,
             precipitation_mm=0.0,
-            wind_speed_kmh=11.2,
-            visibility_km=10.0,
-            weather_score=95.0
+            wind_speed_kmh=0.0,
+            visibility_km=0.0,
+            weather_score=50.0
         )
 
 

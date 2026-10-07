@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, MapPin, Compass, Bot, User, Truck } from 'lucide-react-native';
+import { LayoutDashboard, MapPin, Compass, Bot, User, ScanLine } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 
 export default function TabLayout() {
@@ -41,8 +41,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="trips"
         options={{
-          title: 'Trips',
-          tabBarIcon: ({ color, size }) => <Truck size={20} color={color} />,
+          title: 'OCR Scan',
+          tabBarIcon: ({ color, size }) => <ScanLine size={20} color={color} />,
         }}
       />
       <Tabs.Screen

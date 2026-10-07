@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -20,6 +21,8 @@ import { QuickActionChips } from '@/components/assistant/QuickActionChips';
 import { useAIStore } from '@/stores/useAIStore';
 import { useRouteStore } from '@/stores/useRouteStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
+import { useLocationStore } from '@/stores/useLocationStore';
+import { useVehicleStore } from '@/stores/useVehicleStore';
 
 export default function AssistantScreen() {
   const router = useRouter();
@@ -33,6 +36,8 @@ export default function AssistantScreen() {
   } = useAIStore();
   const { getSelectedRoute } = useRouteStore();
   const { startNavigation } = useNavigationStore();
+  const currentLocation = useLocationStore((state) => state.currentLocation);
+  const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
 
   const [inputVal, setInputVal] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
@@ -46,7 +51,9 @@ export default function AssistantScreen() {
     setInputVal('');
     await sendMessage(text, {
       current_route: selectedRoute,
-      vehicle_type: 'CAR',
+      vehicle_type: selectedVehicle.vehicle_type,
+      selected_vehicle: selectedVehicle,
+      current_location: currentLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null,
     });
 
     setTimeout(() => {
@@ -55,17 +62,8 @@ export default function AssistantScreen() {
   };
 
   const handleToggleVoice = () => {
-    if (isListening) {
-      setIsListening(false);
-      handleSend('Find the fastest route to Hinjewadi Phase 1 bypassing congestion.');
-    } else {
-      setIsListening(true);
-      // Simulate listening timer
-      setTimeout(() => {
-        setIsListening(false);
-        handleSend('Optimize my deliveries for minimum fuel cost and get me back home before 6 PM.');
-      }, 3500);
-    }
+    setIsListening(false);
+    Alert.alert('Voice input unavailable', 'Use the text field to enter your route request.');
   };
 
   const handleActionPress = (action: any) => {
@@ -73,7 +71,8 @@ export default function AssistantScreen() {
       startNavigation(
         selectedRoute.steps,
         selectedRoute.distance_km,
-        selectedRoute.duration_min
+        selectedRoute.duration_min,
+        selectedRoute.coordinates
       );
       router.push({
         pathname: '/navigation/[routeId]',

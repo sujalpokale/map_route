@@ -8,6 +8,7 @@ import time
 from apps.api.app.core.config import settings
 from apps.api.app.api.v1.api import api_router
 from apps.api.app.db.session import init_db
+from apps.api.app.db.mongodb import close_mongodb, connect_mongodb, ping_mongodb
 from apps.api.app.engine.ml_predictor import MLInferenceService
 
 logging.basicConfig(
@@ -27,6 +28,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Database initialization notice: {e}")
 
+    try:
+        await connect_mongodb()
+        logger.info("MongoDB account database initialized.")
+    except Exception as e:
+        logger.warning(f"MongoDB account database unavailable: {type(e).__name__}")
+
     # Pre-load ML models
     try:
         MLInferenceService.load_models()
@@ -35,6 +42,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"ML model load notice: {e}")
 
     yield
+
+    await close_mongodb()
 
     logger.info("Shutting down Route Intelligence Platform API.")
 
@@ -49,7 +58,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS or ["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,6 +78,22 @@ async def add_process_time_header(request: Request, call_next):
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
+@app.get("/v1/models", tags=["AI Compatibility"])
+async def list_models():
+    """Expose configured model metadata for OpenAI-compatible client probes."""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": settings.LLM_MODEL.strip() or "route-intelligence-local",
+                "object": "model",
+                "created": 0,
+                "owned_by": settings.LLM_PROVIDER.lower(),
+            }
+        ],
+    }
+
+
 @app.get("/health", tags=["Health & Observability"])
 async def health_check():
     """Health check endpoint for container orchestrators and load balancers."""
@@ -83,8 +108,10 @@ async def health_check():
 @app.get("/ready", tags=["Health & Observability"])
 async def readiness_check():
     """Readiness probe checking provider availability."""
+    mongodb_ready = await ping_mongodb()
     return {
-        "status": "ready",
+        "status": "ready" if mongodb_ready else "degraded",
+        "mongodb": "connected" if mongodb_ready else "unavailable",
         "routing_provider": settings.ROUTING_PROVIDER,
         "weather_provider": settings.WEATHER_PROVIDER,
         "llm_provider": settings.LLM_PROVIDER

@@ -104,7 +104,8 @@ class PhysicsEngine:
         payload_kg: float = 0.0,
         custom_efficiency: float = None,
         traffic_delay_min: float = 0.0,
-        elevation_gain_m: float = 0.0
+        elevation_gain_m: float = 0.0,
+        custom_fuel_price: float = None,
     ) -> Tuple[float, float, float]:
         """
         Calculates fuel/energy consumed, effective efficiency, and total fuel cost.
@@ -143,7 +144,7 @@ class PhysicsEngine:
         effective_kmpl = max(effective_kmpl, 1.0)
 
         consumed_litres_or_kwh = round(distance_km / effective_kmpl, 2)
-        fuel_price = cls.get_fuel_price(fuel_type)
+        fuel_price = custom_fuel_price if custom_fuel_price and custom_fuel_price > 0 else cls.get_fuel_price(fuel_type)
         fuel_cost_inr = round(consumed_litres_or_kwh * fuel_price, 2)
 
         return consumed_litres_or_kwh, round(effective_kmpl, 2), fuel_cost_inr

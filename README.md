@@ -12,6 +12,64 @@ AERO-ROUTE is an enterprise-grade transportation decision and route optimization
 
 ---
 
+## HERE Traffic-Aware Routing Setup
+
+The FastAPI backend can use HERE Routing v8 and Traffic v7. HERE credentials stay server-side. Copy `.env.example` to `.env`, set `HERE_API_KEY`, then install backend dependencies and start the API from the repository root:
+
+```powershell
+Copy-Item .env.example .env
+python -m pip install -r apps/api/requirements.txt
+python -m uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The HERE-backed endpoints are `POST /api/v1/routes/calculate`, `POST /api/v1/routes/matrix`, `POST /api/v1/routes/reroute`, and `GET /api/v1/traffic/status?lat=...&lng=...`. Open `/docs` on the API host for request schemas. If HERE is unset or unavailable, route and matrix requests fall back to OSRM and explicitly mark live traffic unavailable. Copy `apps/mobile/.env.example` to `apps/mobile/.env` to tune the app's reroute-check interval; the app asks before switching routes.
+
+The multi-stop planner consumes HERE travel-time matrices when available but remains the repository's existing nearest-neighbor/2-opt heuristic; this repository does not currently include OR-Tools. Reroute cooldown state is process-local, so use one API worker for consistent cooldown behavior until shared storage is added.
+
+Run the focused tests with `python -m pytest apps/api/tests/test_here_provider.py apps/api/tests/test_reroute_policy.py apps/api/tests/test_vrp.py -q`. Check the mobile app with `cd apps/mobile` followed by `npm run typecheck`. With the backend running, use `/docs` to try each endpoint; no HERE key is committed or required by the mobile build.
+
+## Accounts, Sessions, and Premium
+
+FastAPI owns identity data in MongoDB Atlas; PostgreSQL/PostGIS remains the route/location store. The backend reads `MONGODB_URI`, `MONGODB_DATABASE`, and JWT settings from the repository `.env` and `apps/api/.env`. The latter is ignored by Git. Copy `.env.example` for the template, then set a long random `JWT_SECRET` and a valid Atlas URI. Credentials containing reserved URI characters must be percent-encoded. Do not put MongoDB credentials in the mobile environment.
+
+The backend creates `users`, `sessions`, `subscriptions`, `user_preferences`, and `password_resets` collections on first connection and installs unique/indexed keys, including TTL expiry for sessions and reset records. Passwords are Argon2id hashes. JWTs contain a user ID and session ID; each protected request also checks the live session and active user, so logout/revocation takes effect before token expiry. PostgreSQL initialization is unchanged.
+
+Optional access-rule overrides use `FEATURE_ACCESS_OVERRIDES` as semicolon-separated entries such as `advanced_traffic=free,premium;route_analytics=premium`; only known features and `free`/`premium` plan names are accepted.
+
+Account endpoints:
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/register` | Public; creates user, Free plan, preferences, and session |
+| `POST` | `/api/v1/auth/login` | Public; email/password |
+| `POST` | `/api/v1/auth/logout` | Current session |
+| `POST` | `/api/v1/auth/logout-all` | All current user's sessions |
+| `POST` | `/api/v1/auth/forgot-password` | Public generic response |
+| `POST` | `/api/v1/auth/reset-password` | One-time hashed token |
+| `GET`, `PATCH` | `/api/v1/users/me` | Authenticated profile |
+| `GET`, `PATCH` | `/api/v1/users/me/preferences` | Authenticated, user-scoped preferences |
+| `GET` | `/api/v1/subscriptions/me` | Authenticated subscription |
+| `GET` | `/api/v1/subscriptions/plans` | Public prices/features |
+| `GET` | `/api/v1/subscriptions/premium/check/{feature}` | Authenticated access check |
+
+Basic route planning and the grounded local assistant are available on the free plan. Premium unlocks external AI responses, advanced traffic, route analytics, and multi-stop optimization. Premium pricing is ₹199/month or ₹1,499/year. New accounts are always `user`; assign `admin` only through a trusted database-operator workflow after verifying the person. In development, an administrator can create a timed test plan with `POST /api/v1/subscriptions/admin/users/{user_id}/test-premium` and body `{"billing_cycle":"monthly"}` or `{"billing_cycle":"yearly"}`. This endpoint is disabled outside `APP_ENV=development`. It is not a payment flow. No payment processor is configured, so the mobile Premium screen shows the prices but cannot complete checkout.
+
+Email delivery and SMS/phone verification providers are not configured. Forgot-password therefore returns a non-enumerating response without sending mail; profile email/phone changes are refused until verification delivery exists. The reset-token storage/consume service is ready for a real provider integration. Reset tokens are not logged or returned by API responses.
+
+To test:
+
+```powershell
+python -m pip install -r apps/api/requirements.txt
+python -m uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m pytest apps/api/tests/test_auth_system.py apps/api/tests/test_ai_route_intent.py -q
+cd apps/mobile
+npm run typecheck
+```
+
+Register via `/docs`, then use the returned bearer token for `GET /api/v1/users/me`, `PATCH /api/v1/users/me`, `GET /api/v1/users/me/preferences`, and `GET /api/v1/subscriptions/me`. After assigning an admin role through a trusted database-operator workflow, create a dev-only test subscription and verify that Free users receive `403 Premium subscription required` for gated APIs. Login returns a JWT for 60 minutes; native clients keep it in Expo SecureStore, while browser sessions remain memory-only. Authentication rate limits are per-process; use a shared limiter before running multiple production workers.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -135,9 +193,9 @@ python -m pytest apps/api/tests -v
 python -m ml.training.train
 
 # Start FastAPI server
-python -m uvicorn apps.api.app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-API Documentation will be live at `http://127.0.0.1:8000/docs`.
+The API is available on this computer at `http://127.0.0.1:8000/docs` and to devices on the same Wi-Fi at `http://<computer-lan-ip>:8000/docs`. The mobile app uses the Expo development server host to reach the API, so start Expo and the API on the same network. For a standalone mobile build, set `EXPO_PUBLIC_API_URL` to the deployed API base URL before building.
 
 ### 4. Start Web Application
 ```bash

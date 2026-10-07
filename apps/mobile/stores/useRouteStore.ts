@@ -7,11 +7,12 @@ import {
   RouteCalculateResponse,
 } from '@/types';
 import { routeService } from '@/services/api/routes';
-import { googleDirectionsService } from '@/services/api/googleDirections';
+import { trafficService } from '@/services/api/traffic';
+import { useVehicleStore } from './useVehicleStore';
 
 interface RouteState {
-  origin: GeoPoint;
-  destination: GeoPoint;
+  origin: GeoPoint | null;
+  destination: GeoPoint | null;
   waypoints: GeoPoint[];
   stops: StopItem[];
   optimizationMode: OptimizationMode;
@@ -22,7 +23,7 @@ interface RouteState {
   metadata: Record<string, any> | null;
 
   setOrigin: (point: GeoPoint) => void;
-  setDestination: (point: GeoPoint) => void;
+  setDestination: (point: GeoPoint | null) => void;
   addWaypoint: (point: GeoPoint) => void;
   removeWaypoint: (index: number) => void;
   setOptimizationMode: (mode: OptimizationMode) => void;
@@ -324,10 +325,10 @@ export function solveTSPNearestNeighbor2Opt(
 }
 
 export const useRouteStore = create<RouteState>((set, get) => ({
-  origin: DEFAULT_ORIGIN,
-  destination: null as any,
+  origin: null,
+  destination: null,
   waypoints: [],
-  stops: DEFAULT_STOPS,
+  stops: [],
   optimizationMode: 'Balanced',
   candidateRoutes: [],
   selectedRouteId: null,
@@ -353,43 +354,29 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
   calculateRoutes: async (vehicleType = 'CAR', payloadKg = 0) => {
     const { origin, destination, waypoints, optimizationMode } = get();
-    if (!destination || !destination.lat || !destination.lng) {
-      set({ candidateRoutes: [], selectedRouteId: null, isLoading: false });
+    const vehicle = useVehicleStore.getState().getSelectedVehicle();
+    if (!origin || !destination || !destination.lat || !destination.lng) {
+      set({
+        candidateRoutes: [], selectedRouteId: null, isLoading: false,
+        error: !origin ? 'Set a real starting location before calculating the route.' : 'Set a destination before calculating the route.',
+      });
       return false;
     }
     set({ isLoading: true, error: null });
 
-    // 1. Primary: Direct Google Maps Directions API (100% accurate road geometry & live traffic)
+    // 1. Keep provider credentials on the backend and prefer its configured provider.
     try {
-      const googleRoutes = await googleDirectionsService.getDirections(
+      const response = await trafficService.calculateTrafficAwareRoute({
         origin,
-        destination,
-        waypoints,
-        vehicleType
-      );
-      if (googleRoutes && googleRoutes.length > 0) {
-        set({
-          candidateRoutes: googleRoutes,
-          selectedRouteId: googleRoutes[0].id,
-          isLoading: false,
-        });
-        return true;
-      }
-    } catch {
-      // Fall through to backend API
-    }
-
-    // 2. Secondary: Route Intelligence Backend Engine
-    try {
-      const response = await routeService.calculate({
-        origin,
-        destination,
+        destination: destination || undefined,
         waypoints,
         vehicle_type: vehicleType as any,
+        fuel_type: vehicle.fuel_type,
+        fuel_efficiency_kmpl: vehicle.efficiency_kmpl,
+        fuel_price_inr: vehicle.fuel_price_inr,
         optimization_mode: optimizationMode,
         payload_kg: payloadKg,
       });
-
       if (response && response.routes.length > 0) {
         set({
           candidateRoutes: response.routes,
@@ -400,128 +387,31 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         return true;
       }
     } catch {
-      // Fall through to dynamic candidate routes
+      // Fall through to backend API
     }
-
-    // Dynamic offline candidate routes connecting live origin -> user chosen destination
-    const oLat = origin?.lat || 18.5204;
-    const oLng = origin?.lng || 73.8567;
-    const dLat = destination.lat;
-    const dLng = destination.lng;
-
-    const baseDistKm = Math.max(1.2, Math.round(computeHaversineDistance(oLat, oLng, dLat, dLng) * 1.25 * 10) / 10);
-
-    const vType = (vehicleType || 'CAR').toUpperCase();
-    let kmpl = 16.5;
-    let fuelPrice = 105.0;
-    let tollBase = 50;
-    let speedFactor = 1.0;
-    let isElectric = vType === 'EV';
-    let maintPerKm = 2.2;
-    let driverHourly = 140;
-
-    if (vType === 'BIKE') {
-      kmpl = 45.0;
-      fuelPrice = 105.0;
-      tollBase = 0;
-      speedFactor = 0.88;
-      maintPerKm = 0.8;
-      driverHourly = 70;
-    } else if (vType === 'TRUCK') {
-      kmpl = 5.5;
-      fuelPrice = 92.5;
-      tollBase = 220;
-      speedFactor = 1.25;
-      maintPerKm = 6.5;
-      driverHourly = 220;
-    } else if (vType === 'BUS') {
-      kmpl = 4.8;
-      fuelPrice = 92.5;
-      tollBase = 180;
-      speedFactor = 1.15;
-      maintPerKm = 5.0;
-      driverHourly = 200;
-    } else if (vType === 'EV') {
-      kmpl = 7.2;
-      fuelPrice = 9.0;
-      tollBase = 50;
-      speedFactor = 1.0;
-      maintPerKm = 1.0;
-      driverHourly = 140;
-    }
-
-    const durationMin1 = Math.max(4, Math.round((baseDistKm / 35) * 60 * speedFactor));
-    const fuel1 = isElectric ? Number((baseDistKm / kmpl).toFixed(1)) : Number((baseDistKm / kmpl).toFixed(2));
-    const fuelCost1 = Math.round(fuel1 * fuelPrice);
-    const maint1 = Math.round(baseDistKm * maintPerKm);
-    const driver1 = Math.round((durationMin1 / 60) * driverHourly);
-    const total1 = fuelCost1 + tollBase + maint1 + driver1;
-
-    const dynamicCoordinates1: [number, number][] = [
-      [oLat, oLng],
-      [oLat + (dLat - oLat) * 0.25 + 0.003, oLng + (dLng - oLng) * 0.25 - 0.003],
-      [oLat + (dLat - oLat) * 0.55 - 0.002, oLng + (dLng - oLng) * 0.55 + 0.002],
-      [oLat + (dLat - oLat) * 0.8 + 0.001, oLng + (dLng - oLng) * 0.8 - 0.001],
-      [dLat, dLng],
-    ];
-
-    const dynamicRoutes: CandidateRoute[] = [
-      {
-        id: 'route_irs_fastest',
-        label: `${vType === 'BIKE' ? 'Bike Express' : vType === 'TRUCK' ? 'HCV Truck Corridor' : vType === 'BUS' ? 'Transit Bus Route' : vType === 'EV' ? 'EV Smart Highway' : 'Fastest Highway'} (Recommended)`,
-        coordinates: dynamicCoordinates1,
-        distance_km: baseDistKm,
-        duration_min: durationMin1,
-        eta_iso: new Date(Date.now() + durationMin1 * 60000).toISOString(),
-        fuel_litres: fuel1,
-        fuel_cost_inr: fuelCost1,
-        toll_cost_inr: tollBase,
-        driver_cost_inr: driver1,
-        maintenance_cost_inr: maint1,
-        total_cost_inr: total1,
-        traffic_delay_min: 2.5,
-        traffic_level: 'Low',
-        weather_condition: 'Clear Sky 28°C',
-        road_quality: 'Smooth Verified Corridor',
-        overall_score: 95.8,
-        sub_scores: {
-          time_score: 98,
-          fuel_score: vType === 'BIKE' || vType === 'EV' ? 98 : 92,
-          cost_score: tollBase > 100 ? 84 : 95,
-          traffic_score: 96,
-          distance_score: 94,
-          weather_score: 99,
-          road_condition_score: 96,
-          safety_score: 96,
-          vehicle_compatibility_score: 99,
-        },
-        recommendation_reason: `Nearest-First 2-Opt Tour: Minimized total travel distance (${baseDistKm} km) and fuel usage.`,
-        is_recommended: true,
-        steps: [
-          { instruction: `Depart from Start location toward first drop`, distance_m: 500, duration_s: 60, road_name: 'Access Road' },
-          { instruction: `Proceed along optimized corridor for ${baseDistKm - 1} km`, distance_m: (baseDistKm - 1) * 1000, duration_s: (durationMin1 - 2) * 60, road_name: 'Main Arterial Highway' },
-          { instruction: `Arrive at ${destination.name || destination.address || 'Destination'}`, distance_m: 200, duration_s: 40, road_name: 'Arrival Point' },
-        ],
-      },
-    ];
 
     set({
-      candidateRoutes: dynamicRoutes,
-      selectedRouteId: dynamicRoutes[0].id,
+      candidateRoutes: [],
+      selectedRouteId: null,
       isLoading: false,
+      error: 'No routing provider is available. Check the API connection and try again.',
     });
-    return true;
+    return false;
   },
 
   optimizeMultiStops: async () => {
     const { origin, destination, stops } = get();
     if (!stops || stops.length === 0) return true;
+    if (!origin) {
+      set({ error: 'Set a real starting location before optimizing stops.', isLoading: false });
+      return false;
+    }
     set({ isLoading: true, error: null });
 
     try {
       const response = await routeService.optimizeStops({
         origin,
-        destination,
+        destination: destination || undefined,
         stops,
       });
 
@@ -544,11 +434,15 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
   calculateMultiStopTour: async (vehicleType = 'CAR') => {
     const { origin, destination: currentDest, stops, optimizeMultiStops } = get();
-    if (!stops || stops.length === 0) return false;
+    const vehicle = useVehicleStore.getState().getSelectedVehicle();
+    if (!origin || !stops || stops.length === 0) {
+      set({ error: !origin ? 'Set a real starting location before optimizing stops.' : 'Add at least one stop first.' });
+      return false;
+    }
     set({ isLoading: true, error: null });
 
     // 1. Run Nearest-Neighbor + 2-Opt TSP sequencer
-    await optimizeMultiStops();
+    if (!await optimizeMultiStops()) return false;
     const orderedStops = get().stops;
 
     // 2. Formulate waypoints and destination
@@ -584,24 +478,29 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
     set({ waypoints });
 
-    // 3. Query real-road routing engine across all multi-stop waypoints
+    // 3. Keep route-provider access on FastAPI for multi-stop routing too.
     try {
-      const routes = await googleDirectionsService.getDirections(
+      const response = await trafficService.calculateTrafficAwareRoute({
         origin,
-        destPoint,
+        destination: destPoint,
         waypoints,
-        vehicleType
-      );
-      if (routes && routes.length > 0) {
+        vehicle_type: vehicleType as any,
+        fuel_type: vehicle.fuel_type,
+        fuel_efficiency_kmpl: vehicle.efficiency_kmpl,
+        fuel_price_inr: vehicle.fuel_price_inr,
+        optimization_mode: get().optimizationMode,
+      });
+      if (response?.routes.length) {
         set({
-          candidateRoutes: routes,
-          selectedRouteId: routes[0].id,
+          candidateRoutes: response.routes,
+          selectedRouteId: response.best_route_id || response.routes[0].id,
+          metadata: response.metadata || null,
           isLoading: false,
         });
         return true;
       }
     } catch {
-      // fallback
+      // Fall through to a backend route calculation without multi-stop waypoints.
     }
 
     // Fallback calculation

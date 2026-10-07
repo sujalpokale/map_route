@@ -6,6 +6,7 @@ router = APIRouter()
 
 
 @router.post("/parse-location", response_model=OCRParseResponse)
+@router.post("/parse", response_model=OCRParseResponse)
 async def parse_location_from_ocr(request: OCRParseRequest):
     """
     Parses unstructured text, delivery slips, invoices, or coordinates

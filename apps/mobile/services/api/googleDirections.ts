@@ -175,6 +175,7 @@ export const googleDirectionsService = {
         0
       );
       const normalDurationS = legs.reduce((acc: number, l: any) => acc + (l.duration?.value || 0), 0);
+      const trafficAvailable = legs.some((leg: any) => typeof leg.duration_in_traffic?.value === 'number');
       const delayMin = Math.max(0, Math.round((totalDurationS - normalDurationS) / 60));
 
       const distKm = Number((totalDistM / 1000).toFixed(1));
@@ -206,7 +207,8 @@ export const googleDirectionsService = {
         delayMin,
         hasTolls,
         steps,
-        vType
+        vType,
+        trafficAvailable
       );
     });
   },
@@ -222,7 +224,7 @@ export const googleDirectionsService = {
 
       const distKm = Number(((r.distance || 1000) / 1000).toFixed(1));
       const durationMin = Math.max(1, Math.round((r.duration || 60) / 60));
-      const delayMin = index === 0 ? 0 : index * 2;
+      const delayMin = 0;
 
       // Parse turn steps from OSRM legs
       const steps: TurnStep[] = [];
@@ -262,7 +264,8 @@ export const googleDirectionsService = {
         delayMin,
         hasTolls,
         steps,
-        vType
+        vType,
+        false
       );
     });
   },
@@ -276,7 +279,8 @@ export const googleDirectionsService = {
     delayMin: number,
     hasTolls: boolean,
     steps: TurnStep[],
-    vType: string
+    vType: string,
+    trafficAvailable: boolean
   ): CandidateRoute {
     let kmpl = 16.5;
     let fuelPricePerUnit = 105.0;
@@ -284,7 +288,6 @@ export const googleDirectionsService = {
     let tollRate = hasTolls ? 50 : 0;
     let driverHourly = 140;
     let maintPerKm = 2.2;
-    let durationAdjFactor = 1.0;
     let vehicleSpecificReason = 'Fastest verified real road network corridor.';
 
     if (vType === 'BIKE') {
@@ -293,7 +296,6 @@ export const googleDirectionsService = {
       tollRate = 0; // Bikes are 100% toll-free
       driverHourly = 70;
       maintPerKm = 0.8;
-      durationAdjFactor = 0.85; // Nimble traffic filtering
       vehicleSpecificReason =
         index === 0
           ? 'Best for Two-Wheeler: Nimble traffic filtering, zero highway tolls, saves ~65% operating cost.'
@@ -304,7 +306,6 @@ export const googleDirectionsService = {
       tollRate = hasTolls ? 220 : 0; // Heavy commercial vehicle toll
       driverHourly = 220;
       maintPerKm = 6.5;
-      durationAdjFactor = 1.25; // Slower commercial cruising & wide turns
       vehicleSpecificReason =
         index === 0
           ? 'Best for Heavy Truck: Wide highway bypass avoiding low bridges, sharp turns, and congested market streets.'
@@ -315,7 +316,6 @@ export const googleDirectionsService = {
       tollRate = hasTolls ? 180 : 0; // Bus commercial toll
       driverHourly = 200;
       maintPerKm = 5.0;
-      durationAdjFactor = 1.15; // Passenger bus speed profile
       vehicleSpecificReason =
         index === 0
           ? 'Best for Passenger Transit: Wide multi-lane arterial road with optimal transit speed.'
@@ -327,7 +327,6 @@ export const googleDirectionsService = {
       tollRate = hasTolls ? 50 : 0;
       driverHourly = 140;
       maintPerKm = 1.0;
-      durationAdjFactor = 1.0;
       vehicleSpecificReason =
         index === 0
           ? 'Best for Electric Vehicle: Optimal energy efficiency corridor with regenerative braking.'
@@ -339,14 +338,13 @@ export const googleDirectionsService = {
       tollRate = hasTolls ? 50 : 0;
       driverHourly = 140;
       maintPerKm = 2.2;
-      durationAdjFactor = 1.0;
       vehicleSpecificReason =
         index === 0
           ? 'Best for Four-Wheeler: Optimal balance of arrival time, fuel efficiency, and road comfort.'
           : `Alternative corridor ${summary}.`;
     }
 
-    const adjustedDurationMin = Math.max(1, Math.round(baseDurationMin * durationAdjFactor));
+    const adjustedDurationMin = Math.max(1, Math.round(baseDurationMin));
     const fuelConsumptionUnits = isElectric
       ? Number((distKm / kmpl).toFixed(1))
       : Number((distKm / kmpl).toFixed(2));
@@ -373,8 +371,8 @@ export const googleDirectionsService = {
       driver_cost_inr: driverCostInr,
       maintenance_cost_inr: maintCostInr,
       total_cost_inr: totalCostInr,
-      traffic_delay_min: delayMin,
-      traffic_level: delayMin > 8 ? 'High' : delayMin > 3 ? 'Moderate' : 'Low',
+      traffic_delay_min: trafficAvailable ? delayMin : 0,
+      traffic_level: !trafficAvailable ? 'Unavailable' : delayMin > 8 ? 'High' : delayMin > 3 ? 'Moderate' : 'Low',
       weather_condition: 'Clear Sky 28°C',
       road_quality: 'Smooth Verified City Road',
       overall_score: Number((96 - index * 3 - (tollRate > 100 ? 3 : 0)).toFixed(1)),
@@ -382,7 +380,7 @@ export const googleDirectionsService = {
         time_score: Number((98 - index * 4).toFixed(1)),
         fuel_score: vType === 'BIKE' || vType === 'EV' ? 98 : 91,
         cost_score: tollRate > 100 ? 82 : 95,
-        traffic_score: delayMin > 5 ? (vType === 'BIKE' ? 90 : 80) : 95,
+        traffic_score: !trafficAvailable ? 50 : delayMin > 5 ? (vType === 'BIKE' ? 90 : 80) : 95,
         distance_score: 95,
         weather_score: 98,
         road_condition_score: 97,

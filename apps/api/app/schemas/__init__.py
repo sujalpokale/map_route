@@ -93,9 +93,12 @@ class RouteCalculateRequest(BaseModel):
     vehicle_type: VehicleTypeEnum = VehicleTypeEnum.CAR
     fuel_type: FuelTypeEnum = FuelTypeEnum.PETROL
     fuel_efficiency_kmpl: Optional[float] = None
+    fuel_price_inr: Optional[float] = Field(default=None, gt=0, le=10000)
     payload_kg: Optional[float] = 0.0
     optimization_mode: OptimizationMode = OptimizationMode.BALANCED
     departure_time: Optional[str] = None
+    traffic_aware: bool = True
+    avoid_features: List[str] = Field(default_factory=list)
     custom_weights: Optional[Dict[str, float]] = None
     ev_battery_pct: Optional[float] = 100.0
 
@@ -108,6 +111,50 @@ class RouteCalculateResponse(BaseModel):
     optimization_mode: str
     calculation_time_ms: float
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TrafficStatusResponse(BaseModel):
+    location: GeoPoint
+    traffic_available: bool
+    traffic_level: str = "UNAVAILABLE"
+    jam_factor: Optional[float] = None
+    current_speed_kph: Optional[float] = None
+    free_flow_speed_kph: Optional[float] = None
+    traffic_ratio: Optional[float] = None
+    confidence: Optional[float] = None
+    updated_at: Optional[str] = None
+    message: Optional[str] = None
+
+
+class RouteMatrixRequest(BaseModel):
+    locations: List[GeoPoint] = Field(..., min_length=2)
+    traffic_aware: bool = True
+
+
+class RouteMatrixResponse(BaseModel):
+    duration_matrix_seconds: List[List[Optional[int]]]
+    distance_matrix_meters: List[List[Optional[int]]]
+    traffic_aware: bool
+
+
+class RerouteRequest(BaseModel):
+    current_location: GeoPoint
+    destination: GeoPoint
+    current_route_id: str
+    remaining_route_time_seconds: int = Field(..., ge=0)
+    waypoints: List[GeoPoint] = Field(default_factory=list)
+    vehicle_type: VehicleTypeEnum = VehicleTypeEnum.CAR
+    avoid_features: List[str] = Field(default_factory=list)
+
+
+class RerouteResponse(BaseModel):
+    reroute_available: bool
+    recommended_route: Optional[Dict[str, Any]] = None
+    current_remaining_time_minutes: float
+    alternative_time_minutes: Optional[float] = None
+    time_saved_minutes: float = 0
+    reason: str
+    traffic_available: bool
 
 
 # Multi-Stop VRP
@@ -143,6 +190,7 @@ class OptimizeStopsResponse(BaseModel):
     road_suitability_score: Optional[float] = 95.0
     average_speed_kmh: Optional[float] = None
     vehicle_road_guidance: Optional[str] = None
+    traffic_aware: bool = False
 
 
 # Single Location Road & Vehicle Accessibility Profile
@@ -230,15 +278,37 @@ class AIChatResponse(BaseModel):
 class OCRParseRequest(BaseModel):
     image_base64: Optional[str] = None
     raw_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class ValidationDetails(BaseModel):
+    pincode_valid: bool = False
+    city_state_consistent: bool = False
+    geocode_verified: bool = False
+    conflict_warning: Optional[str] = None
+
+
+class ConfidenceBreakdown(BaseModel):
+    ocr_confidence: float = 0.0
+    parsing_confidence: float = 0.0
+    pincode_confidence: float = 0.0
+    geocoding_confidence: float = 0.0
+    consistency_confidence: float = 0.0
 
 
 class ParsedLocation(BaseModel):
     raw_extracted_text: str
     cleaned_address: str
     city: Optional[str] = None
+    state: Optional[str] = None
     pincode: Optional[str] = None
+    country: Optional[str] = "India"
     confidence_score: float
+    confidence_breakdown: Optional[ConfidenceBreakdown] = None
     geocoded_point: Optional[GeoPoint] = None
+    matched_address: Optional[str] = None
+    validation: Optional[ValidationDetails] = None
 
 
 class OCRParseResponse(BaseModel):

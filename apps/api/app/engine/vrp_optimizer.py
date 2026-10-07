@@ -9,7 +9,11 @@ from apps.api.app.providers.routing import haversine_distance, SimulatedFallback
 
 class VRPOptimizer:
     @classmethod
-    def optimize_delivery_sequence(cls, request: OptimizeStopsRequest) -> OptimizeStopsResponse:
+    def optimize_delivery_sequence(
+        cls,
+        request: OptimizeStopsRequest,
+        duration_matrix_seconds: List[List[int | None]] | None = None,
+    ) -> OptimizeStopsResponse:
         stops = request.stops
         if not stops:
             return OptimizeStopsResponse(
@@ -46,7 +50,10 @@ class VRPOptimizer:
 
             for candidate_idx in unvisited:
                 cand_node = all_nodes[candidate_idx]
-                dist = haversine_distance(curr_node.lat, curr_node.lng, cand_node.lat, cand_node.lng)
+                if duration_matrix_seconds and duration_matrix_seconds[current_idx][candidate_idx] is not None:
+                    dist = float(duration_matrix_seconds[current_idx][candidate_idx])
+                else:
+                    dist = haversine_distance(curr_node.lat, curr_node.lng, cand_node.lat, cand_node.lng)
 
                 # Prioritize urgent stops (priority 3 lowers effective distance cost by 30%)
                 priority_factor = {1: 1.0, 2: 0.85, 3: 0.70}.get(cand_node.priority, 1.0)
@@ -61,7 +68,8 @@ class VRPOptimizer:
             current_idx = best_idx
 
         # 3. Apply 2-opt open-path TSP improvement (fixed origin at index 0, ends at final stop)
-        tour = cls._two_opt_open_path(tour, all_nodes)
+        destination_matrix_idx = len(all_nodes) if request.destination else None
+        tour = cls._two_opt_open_path(tour, all_nodes, duration_matrix_seconds, destination_matrix_idx)
 
         ordered_stops = [all_nodes[i] for i in tour[1:]]
 
@@ -200,18 +208,27 @@ class VRPOptimizer:
 
         total_dist = round(total_dist, 2)
         # Vehicle-specific duration computation
-        driving_time_min = (total_dist / v_cfg["avg_speed_kmh"]) * 60.0
+        if duration_matrix_seconds:
+            route_indices = tour + ([destination_matrix_idx] if destination_matrix_idx is not None else [])
+            driving_seconds = sum(
+                duration_matrix_seconds[a][b] or 0
+                for a, b in zip(route_indices, route_indices[1:])
+            )
+            driving_time_min = driving_seconds / 60.0
+        else:
+            driving_time_min = (total_dist / v_cfg["avg_speed_kmh"]) * 60.0
         stop_handling_min = len(ordered_stops) * v_cfg["stop_min"]
         total_dur = round(driving_time_min + stop_handling_min, 1)
 
         first_stop_name = ordered_stops[0].address.split(",")[0] if ordered_stops else "N/A"
         last_stop_name = ordered_stops[-1].address.split(",")[0] if ordered_stops else "N/A"
 
+        duration_source = "HERE live-traffic travel-time matrix" if duration_matrix_seconds is not None else f"~{int(v_cfg['avg_speed_kmh'])} km/h estimate"
         summary = (
             f"{v_type_str} Optimized Itinerary ({len(ordered_stops)} stops): "
             f"Departs to '{first_stop_name}' first → finishes at '{last_stop_name}'. "
             f"Road type: {v_cfg['road_summary']}. "
-            f"Distance: {total_dist} km (~{total_dur} mins @ {int(v_cfg['avg_speed_kmh'])} km/h)."
+            f"Distance: {total_dist} km (~{total_dur} mins; {duration_source})."
         )
 
         return OptimizeStopsResponse(
@@ -225,15 +242,21 @@ class VRPOptimizer:
             road_type_summary=v_cfg["road_summary"],
             road_suitability_score=v_cfg["suitability_score"],
             average_speed_kmh=v_cfg["avg_speed_kmh"],
-            vehicle_road_guidance=v_cfg["guidance"]
+            vehicle_road_guidance=v_cfg["guidance"],
+            traffic_aware=duration_matrix_seconds is not None,
         )
 
 
     @staticmethod
-    def _two_opt_open_path(tour: List[int], nodes: List[StopItem]) -> List[int]:
+    def _two_opt_open_path(
+        tour: List[int],
+        nodes: List[StopItem],
+        duration_matrix_seconds: List[List[int | None]] | None = None,
+        destination_idx: int | None = None,
+    ) -> List[int]:
         """Performs 2-opt heuristic optimization for open-ended vehicle paths."""
         n = len(tour)
-        if n <= 3:
+        if n <= 2:
             return tour
 
         best_tour = tour[:]
@@ -241,32 +264,26 @@ class VRPOptimizer:
         iterations = 0
         max_iterations = 60
 
+        def path_cost(path: List[int]) -> float:
+            if duration_matrix_seconds:
+                indices = path + ([destination_idx] if destination_idx is not None else [])
+                return float(sum(
+                    duration_matrix_seconds[a][b] or 0
+                    for a, b in zip(indices, indices[1:])
+                ))
+            return sum(
+                haversine_distance(nodes[a].lat, nodes[a].lng, nodes[b].lat, nodes[b].lng)
+                for a, b in zip(path, path[1:])
+            )
+
         while improved and iterations < max_iterations:
             improved = False
             iterations += 1
             for i in range(1, n - 1):
                 for j in range(i + 1, n):
-                    curr_cost = haversine_distance(
-                        nodes[best_tour[i - 1]].lat, nodes[best_tour[i - 1]].lng,
-                        nodes[best_tour[i]].lat, nodes[best_tour[i]].lng
-                    )
-                    new_cost = haversine_distance(
-                        nodes[best_tour[i - 1]].lat, nodes[best_tour[i - 1]].lng,
-                        nodes[best_tour[j]].lat, nodes[best_tour[j]].lng
-                    )
-
-                    if j + 1 < n:
-                        curr_cost += haversine_distance(
-                            nodes[best_tour[j]].lat, nodes[best_tour[j]].lng,
-                            nodes[best_tour[j + 1]].lat, nodes[best_tour[j + 1]].lng
-                        )
-                        new_cost += haversine_distance(
-                            nodes[best_tour[i]].lat, nodes[best_tour[i]].lng,
-                            nodes[best_tour[j + 1]].lat, nodes[best_tour[j + 1]].lng
-                        )
-
-                    if new_cost < curr_cost - 0.001:
-                        best_tour[i:j + 1] = list(reversed(best_tour[i:j + 1]))
+                    candidate = best_tour[:i] + list(reversed(best_tour[i:j + 1])) + best_tour[j + 1:]
+                    if path_cost(candidate) < path_cost(best_tour) - 0.001:
+                        best_tour = candidate
                         improved = True
                         break
                 if improved:

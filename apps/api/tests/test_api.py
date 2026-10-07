@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from apps.api.app.main import app
+from apps.api.app.services.feature_access import require_limited_route_planning
+from apps.api.app.api.v1.endpoints import ai as ai_endpoint
 
 client = TestClient(app)
 
@@ -10,6 +12,27 @@ def test_health_check():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
+
+
+def test_openai_compatible_model_discovery():
+    response = client.get("/v1/models")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["object"] == "list"
+    assert data["data"][0]["id"]
+    assert data["data"][0]["owned_by"]
+
+
+def test_subscription_plan_prices():
+    response = client.get("/api/v1/subscriptions/plans")
+    assert response.status_code == 200
+    prices = {
+        (plan["plan"], plan["billing_cycle"]): plan["price"]
+        for plan in response.json()["plans"]
+    }
+    assert prices[("free", None)] == 0
+    assert prices[("premium", "monthly")] == 199
+    assert prices[("premium", "yearly")] == 1499
 
 
 def test_calculate_routes_api():
@@ -47,11 +70,18 @@ def test_predict_eta_api():
     assert len(data["confidence_interval_min"]) == 2
 
 
-def test_ai_chat_api():
+def test_ai_chat_api(monkeypatch):
     payload = {
         "message": "Which route will use less fuel from Pune to Hinjawadi?"
     }
-    response = client.post("/api/v1/ai/chat", json=payload)
+    app.dependency_overrides[require_limited_route_planning] = lambda: {"user_id": "usr_test", "role": "user"}
+    async def no_premium_ai(user_id, feature):
+        return False
+    monkeypatch.setattr(ai_endpoint, "has_feature", no_premium_ai)
+    try:
+        response = client.post("/api/v1/ai/chat", json=payload)
+    finally:
+        app.dependency_overrides.pop(require_limited_route_planning, None)
     assert response.status_code == 200
     data = response.json()
     assert "reply" in data

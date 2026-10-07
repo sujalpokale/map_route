@@ -59,7 +59,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Route Intelligence requires location permissions for real-time navigation and telematics tracking."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

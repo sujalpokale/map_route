@@ -7,13 +7,13 @@ interface LocationState {
   isTracking: boolean;
   heading: number;
   speedKmh: number;
-  accuracyM: number;
+  accuracyM: number | null;
   lastUpdated: number | null;
   
   setLocation: (location: GPSLocation) => void;
   setPermission: (granted: boolean) => void;
   setTracking: (tracking: boolean) => void;
-  updateCoordinates: (lat: number, lng: number, speed?: number, heading?: number) => void;
+  updateCoordinates: (lat: number, lng: number, speed?: number | null, heading?: number | null, accuracy?: number | null, altitude?: number | null) => void;
 }
 
 export const useLocationStore = create<LocationState>((set) => ({
@@ -22,7 +22,7 @@ export const useLocationStore = create<LocationState>((set) => ({
   isTracking: false,
   heading: 0,
   speedKmh: 0,
-  accuracyM: 5,
+  accuracyM: null,
   lastUpdated: null,
 
   setLocation: (location) => {
@@ -38,19 +38,20 @@ export const useLocationStore = create<LocationState>((set) => ({
   setPermission: (granted) => set({ hasPermission: granted }),
   setTracking: (tracking) => set({ isTracking: tracking }),
 
-  updateCoordinates: (lat, lng, speed = 30, heading = 0) => {
+  updateCoordinates: (lat, lng, speed = null, heading = null, accuracy = null, altitude = null) => {
     set((state) => ({
       currentLocation: {
         latitude: lat,
         longitude: lng,
-        altitude: 550,
-        accuracy: 5,
+        altitude,
+        accuracy,
         heading,
-        speed: speed / 3.6,
+        speed: speed == null ? null : speed / 3.6,
         timestamp: Date.now(),
       },
-      speedKmh: speed,
-      heading,
+      speedKmh: speed == null ? 0 : speed,
+      heading: heading ?? 0,
+      accuracyM: accuracy,
       lastUpdated: Date.now(),
     }));
   },
