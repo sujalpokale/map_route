@@ -17,7 +17,6 @@ import { THEME } from '@/constants/theme';
 import { Header } from '@/components/ui/Header';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
-import { useAuthStore } from '@/stores/useAuthStore';
 import { useRouteStore } from '@/stores/useRouteStore';
 import { authApi } from '@/services/api/auth';
 import { VehicleType } from '@/types';
@@ -67,6 +66,150 @@ export default function SettingsScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Vehicle & Fuel Efficiency */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Vehicle & Fuel Efficiency</Text>
+
+          <View style={styles.vehicleSettingsCard}>
+            <View style={styles.vehicleSettingsHeader}>
+              <View style={styles.vehicleSettingsTitleWrap}>
+                <Car size={18} color={THEME.colors.primaryLight} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>Vehicle Type</Text>
+                  <Text style={styles.rowSub}>
+                    Used for route, fuel, and cost calculations
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.selectedVehicleLabel}>
+                {selectedVehicle?.vehicle_type || 'CAR'}
+              </Text>
+            </View>
+
+            <View style={styles.vehicleTypeGrid}>
+              {vehicleTypes.map((vehicle) => {
+                const active = vehicle.id === selectedVehicleId;
+                return (
+                  <TouchableOpacity
+                    key={vehicle.id}
+                    style={[styles.vehicleTypeChip, active && styles.vehicleTypeChipActive]}
+                    onPress={() => {
+                      selectVehicle(vehicle.id);
+                      setMileageDraft(String(vehicle.efficiency_kmpl));
+                    }}
+                    activeOpacity={0.82}
+                  >
+                    <Text style={[styles.vehicleTypeText, active && styles.vehicleTypeTextActive]}>
+                      {vehicle.vehicle_type}
+                    </Text>
+                    <Text style={styles.vehicleTypeSub}>
+                      {vehicle.vehicle_type === 'EV' ? 'Electric' : vehicle.fuel_type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.fuelInputRow}>
+              <View style={styles.fuelInputLabelWrap}>
+                <Fuel size={17} color={THEME.colors.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>Average Efficiency</Text>
+                  <Text style={styles.rowSub}>
+                    Enter your real-world average
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.mileageInputWrap}>
+                <TextInput
+                  value={mileageDraft}
+                  onChangeText={setMileageDraft}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  style={styles.mileageInput}
+                  placeholder="e.g. 16.5"
+                  placeholderTextColor={THEME.colors.textMuted}
+                  accessibilityLabel="Average vehicle efficiency"
+                />
+                <Text style={styles.mileageUnit}>
+                  {selectedVehicle?.vehicle_type === 'EV' ? 'km/kWh' : 'km/L'}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.fuelFormula}>
+              Fuel/energy estimate = route distance ÷ your average efficiency.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.saveVehicleButton}
+              onPress={async () => {
+                const efficiency = Number(mileageDraft);
+                if (!selectedVehicle) return;
+
+                if (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 500) {
+                  Alert.alert(
+                    'Invalid average',
+                    selectedVehicle.vehicle_type === 'EV'
+                      ? 'Enter a valid km/kWh value.'
+                      : 'Enter a valid km/L value.'
+                  );
+                  return;
+                }
+
+                const vehicleSettings = Object.fromEntries(
+                  vehicles.map((vehicle) => [
+                    vehicle.id,
+                    {
+                      efficiency_kmpl:
+                        vehicle.id === selectedVehicle.id
+                          ? efficiency
+                          : vehicle.efficiency_kmpl,
+                      fuel_price_inr: vehicle.fuel_price_inr,
+                    },
+                  ])
+                );
+
+                const response = await authApi.updatePreferences({
+                  selected_vehicle_id: selectedVehicle.id,
+                  vehicle_settings: vehicleSettings,
+                });
+
+                if (!response.data) {
+                  Alert.alert(
+                    'Could not save',
+                    response.error || 'Please try again.'
+                  );
+                  return;
+                }
+
+                updateVehicleEconomics(
+                  selectedVehicle.id,
+                  efficiency,
+                  selectedVehicle.fuel_price_inr
+                );
+
+                const routeStore = useRouteStore.getState();
+                if (routeStore.origin && routeStore.destination) {
+                  await routeStore.calculateRoutes(selectedVehicle.vehicle_type);
+                }
+
+                Alert.alert(
+                  'Vehicle settings saved',
+                  selectedVehicle.vehicle_type === 'EV'
+                    ? 'Your km/kWh value will be used for future energy estimates.'
+                    : 'Your km/L value will be used for future fuel estimates.'
+                );
+              }}
+              activeOpacity={0.82}
+            >
+              <Save size={16} color="#090D16" />
+              <Text style={styles.saveVehicleButtonText}>Save Vehicle & Mileage</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Navigation & Audio Guidance */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Audio & Turn Navigation</Text>
