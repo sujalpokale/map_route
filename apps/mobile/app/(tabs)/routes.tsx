@@ -319,24 +319,12 @@ export default function RoutesScreen() {
     const activeVType = vType || selectedVehicle.vehicle_type;
 
     if (stops.length === 0) {
-      prepareForMultiStop();
       handleFitAllStops();
       return;
     }
 
     // Adjust destination based on end point mode:
     if (endPointMode === 'RETURN_START' && origin) {
-      // Add return stop to origin
-      const returnStop: StopItem = {
-        id: `return_${Date.now()}`,
-        name: `Return Depot (${origin.name || 'Start'})`,
-        address: origin.address || 'Start Location',
-        lat: origin.lat,
-        lng: origin.lng,
-        priority: 3,
-        package_weight_kg: 0,
-        is_locked: true,
-      };
       setDestination(origin);
     } else if (endPointMode === 'CUSTOM' && customEndLocation) {
       setDestination(customEndLocation);
