@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Volume2,
@@ -9,10 +9,18 @@ import {
   Gauge,
   Sliders,
   ChevronRight,
+  Fuel,
+  Car,
+  Save,
 } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { Header } from '@/components/ui/Header';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useVehicleStore } from '@/stores/useVehicleStore';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { useRouteStore } from '@/stores/useRouteStore';
+import { authApi } from '@/services/api/auth';
+import { VehicleType } from '@/types';
 
 export default function SettingsScreen() {
   const {
@@ -22,6 +30,33 @@ export default function SettingsScreen() {
     toggleDarkMap,
     setDefaultOptimization,
   } = useSettingsStore();
+
+  const {
+    vehicles,
+    selectedVehicleId,
+    selectVehicle,
+    updateVehicleEconomics,
+  } = useVehicleStore();
+
+  const [mileageDraft, setMileageDraft] = useState('');
+
+  const selectedVehicle = useMemo(
+    () => vehicles.find((vehicle) => vehicle.id === selectedVehicleId) || vehicles[0],
+    [vehicles, selectedVehicleId]
+  );
+
+  const vehicleTypes = useMemo(() => {
+    const seen = new Set<VehicleType>();
+    return vehicles.filter((vehicle) => {
+      if (seen.has(vehicle.vehicle_type)) return false;
+      seen.add(vehicle.vehicle_type);
+      return true;
+    });
+  }, [vehicles]);
+
+  useEffect(() => {
+    setMileageDraft(String(selectedVehicle?.efficiency_kmpl ?? ''));
+  }, [selectedVehicle?.id, selectedVehicle?.efficiency_kmpl]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
