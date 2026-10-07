@@ -10,7 +10,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Plus,
@@ -48,7 +48,7 @@ import { Button } from '@/components/ui/Button';
 import { MapViewAbstraction } from '@/components/map/MapViewAbstraction';
 import { OptimizationSelector } from '@/components/route/OptimizationSelector';
 import { IRSScoreBreakdown } from '@/components/route/IRSScoreBreakdown';
-import { useRouteStore } from '@/stores/useRouteStore';
+import { useMultiStopStore } from '@/stores/useMultiStopStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
 import { useLocationStore } from '@/stores/useLocationStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
@@ -70,9 +70,8 @@ export default function RoutesScreen() {
     setOptimizationMode,
     calculateMultiStopTour,
     getSelectedRoute,
-    prepareForMultiStop,
     isLoading,
-  } = useRouteStore();
+  } = useMultiStopStore();
 
   const { getSelectedVehicle, selectVehicle, vehicles } = useVehicleStore();
   const { currentLocation, updateCoordinates } = useLocationStore();
@@ -109,30 +108,7 @@ export default function RoutesScreen() {
   const selectedRoute = getSelectedRoute();
   const searchTimeoutRef = useRef<any>(null);
 
-  // Multi-Stop is intentionally independent from the single-route planner.
-  // With no drops, never render the shared single-route destination/result.
-  const multiStopDestination = stops.length > 0 ? destination : null;
-  const multiStopRoute = stops.length > 0 ? selectedRoute : null;
-
-  // Multi-Stop has its own draft context. Remove a stale single-route
-  // destination/result as soon as this tab becomes active, while preserving
-  // the live origin and any genuine multi-stop stops.
-  useFocusEffect(
-    React.useCallback(() => {
-      prepareForMultiStop();
-
-      // Reset Multi-Stop-only end-point draft state. A previous single-route
-      // destination must never survive as a visible Multi-Stop destination.
-      setEndPointMode('LAST_DROP');
-      setCustomEndLocation(null);
-      setEndSearchQuery('');
-      setEndSearchResults([]);
-      setIsSearchingEnd(false);
-      setFocusedLocation(null);
-      setFocusedPointLabel(null);
-      setActiveStopIndex(null);
-    }, [prepareForMultiStop])
-  );
+  // Multi-Stop keeps its own local map controls and end-point draft.
 
   const handleFocusPoint = (lat: number, lng: number, label: string, index?: number) => {
     setFocusedLocation({ latitude: lat, longitude: lng, zoom: 17 });
@@ -371,16 +347,16 @@ export default function RoutesScreen() {
   };
 
   const handleStartNav = () => {
-    if (multiStopRoute) {
+    if (selectedRoute) {
       startNavigation(
-        multiStopRoute.steps,
-        multiStopRoute.distance_km,
-        multiStopRoute.duration_min,
-        multiStopRoute.coordinates
+        selectedRoute.steps,
+        selectedRoute.distance_km,
+        selectedRoute.duration_min,
+        selectedRoute.coordinates
       );
       router.push({
         pathname: '/navigation/[routeId]',
-        params: { routeId: multiStopRoute.id },
+        params: { routeId: selectedRoute.id },
       });
     }
   };
@@ -840,9 +816,9 @@ export default function RoutesScreen() {
         >
           <MapViewAbstraction
             origin={origin}
-            destination={multiStopDestination}
+            destination={destination}
             stops={stops}
-            activeRoute={multiStopRoute}
+            activeRoute={selectedRoute}
             focusedLocation={focusedLocation}
             currentLocation={
               currentLocation
@@ -863,7 +839,7 @@ export default function RoutesScreen() {
             <View style={styles.mapBadge}>
               <MapPin size={13} color="#8AB4F8" />
               <Text style={styles.mapBadgeText}>
-                {stops.length + (origin ? 1 : 0) + (multiStopDestination ? 1 : 0)} Waypoints • Drag/Pinch to move
+                {stops.length + (origin ? 1 : 0) + (destination ? 1 : 0)} Waypoints • Drag/Pinch to move
               </Text>
             </View>
 
@@ -932,7 +908,7 @@ export default function RoutesScreen() {
         </TouchableOpacity>
 
         {/* 7. Route Summary Card (If Route Calculated) */}
-        {multiStopRoute && (
+        {selectedRoute && (
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
               <View>
@@ -943,7 +919,7 @@ export default function RoutesScreen() {
               </View>
               <View style={styles.scoreBadge}>
                 <Sparkles size={14} color="#34A853" />
-                <Text style={styles.scoreBadgeText}>{Math.round(multiStopRoute.overall_score || 95)}/100</Text>
+                <Text style={styles.scoreBadgeText}>{Math.round(selectedRoute.overall_score || 95)}/100</Text>
               </View>
             </View>
 
@@ -952,7 +928,7 @@ export default function RoutesScreen() {
               <View style={styles.metricItem}>
                 <Clock size={15} color="#8AB4F8" />
                 <Text style={styles.metricLabel}>Total Time</Text>
-                <Text style={styles.metricValue}>{Math.round(multiStopRoute.duration_min)} min</Text>
+                <Text style={styles.metricValue}>{Math.round(selectedRoute.duration_min)} min</Text>
               </View>
 
               <View style={styles.metricItem}>
@@ -960,8 +936,8 @@ export default function RoutesScreen() {
                 <Text style={styles.metricLabel}>Fuel / EV</Text>
                 <Text style={styles.metricValue}>
                   {selectedVehicle.vehicle_type === 'EV'
-                    ? `${((multiStopRoute.fuel_litres || 1.4) * 2.8).toFixed(1)} kWh`
-                    : `${multiStopRoute.fuel_litres || 1.4} L`}
+                    ? `${((selectedRoute.fuel_litres || 1.4) * 2.8).toFixed(1)} kWh`
+                    : `${selectedRoute.fuel_litres || 1.4} L`}
                 </Text>
               </View>
 
@@ -969,21 +945,21 @@ export default function RoutesScreen() {
                 <IndianRupee size={15} color="#34A853" />
                 <Text style={styles.metricLabel}>Total Cost</Text>
                 <Text style={styles.metricValue}>
-                  ₹{Math.round(multiStopRoute.total_cost_inr || multiStopRoute.fuel_cost_inr || 150)}
+                  ₹{Math.round(selectedRoute.total_cost_inr || selectedRoute.fuel_cost_inr || 150)}
                 </Text>
               </View>
 
               <View style={styles.metricItem}>
                 <Compass size={15} color="#8AB4F8" />
                 <Text style={styles.metricLabel}>Distance</Text>
-                <Text style={styles.metricValue}>{multiStopRoute.distance_km} km</Text>
+                <Text style={styles.metricValue}>{selectedRoute.distance_km} km</Text>
               </View>
             </View>
 
             {/* Recommendation Reason */}
-            {multiStopRoute.recommendation_reason && (
+            {selectedRoute.recommendation_reason && (
               <View style={styles.aiReasonBox}>
-                <Text style={styles.aiReasonText}>💡 {multiStopRoute.recommendation_reason}</Text>
+                <Text style={styles.aiReasonText}>💡 {selectedRoute.recommendation_reason}</Text>
               </View>
             )}
 
@@ -1035,20 +1011,20 @@ export default function RoutesScreen() {
               ))}
 
               {/* Finish Destination Item */}
-              {multiStopDestination && (
+              {destination && (
                 <TouchableOpacity
                   style={styles.itineraryItem}
-                  onPress={() => handleFocusPoint(multiStopDestination.lat, multiStopDestination.lng, `Finish: ${multiStopDestination.name || multiStopDestination.address}`)}
+                  onPress={() => handleFocusPoint(destination.lat, destination.lng, `Finish: ${destination.name || destination.address}`)}
                 >
                   <View style={styles.itineraryPinB}>
                     <Text style={styles.itineraryPinText}>B</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itineraryItemName} numberOfLines={1}>
-                      Finish: {multiStopDestination.name || 'End Point'}
+                      Finish: {destination.name || 'End Point'}
                     </Text>
                     <Text style={styles.itineraryItemAddr} numberOfLines={1}>
-                      {multiStopDestination.address}
+                      {destination.address}
                     </Text>
                   </View>
                   <Crosshair size={14} color="#EA4335" />
@@ -1060,7 +1036,7 @@ export default function RoutesScreen() {
             <TouchableOpacity style={styles.startNavBtn} onPress={handleStartNav} activeOpacity={0.8}>
               <Navigation size={18} color="#FFFFFF" />
               <Text style={styles.startNavBtnText}>
-                Start Multi-Stop Navigation ({Math.round(multiStopRoute.duration_min)} min)
+                Start Multi-Stop Navigation ({Math.round(selectedRoute.duration_min)} min)
               </Text>
             </TouchableOpacity>
           </View>
@@ -1078,9 +1054,9 @@ export default function RoutesScreen() {
           {/* Full-bleed Canvas */}
           <MapViewAbstraction
             origin={origin}
-            destination={multiStopDestination}
+            destination={destination}
             stops={stops}
-            activeRoute={multiStopRoute}
+            activeRoute={selectedRoute}
             focusedLocation={focusedLocation}
             currentLocation={
               currentLocation
@@ -1108,7 +1084,7 @@ export default function RoutesScreen() {
             <View style={styles.fsTitleWrap}>
               <Text style={styles.fsTitleText}>Full Screen Map</Text>
               <Text style={styles.fsSubText}>
-                {stops.length + (origin ? 1 : 0) + (multiStopDestination ? 1 : 0)} Waypoints • Drag & Explore
+                {stops.length + (origin ? 1 : 0) + (destination ? 1 : 0)} Waypoints • Drag & Explore
               </Text>
             </View>
 
@@ -1175,23 +1151,23 @@ export default function RoutesScreen() {
               })}
 
               {/* Destination Point B */}
-              {multiStopDestination && (
+              {destination && (
                 <TouchableOpacity
                   style={[
                     styles.fsStopCard,
-                    focusedLocation?.latitude === multiStopDestination.lat && styles.fsStopCardActive,
+                    focusedLocation?.latitude === destination.lat && styles.fsStopCardActive,
                   ]}
-                  onPress={() => handleFocusPoint(multiStopDestination.lat, multiStopDestination.lng, `Finish: ${multiStopDestination.name || multiStopDestination.address}`)}
+                  onPress={() => handleFocusPoint(destination.lat, destination.lng, `Finish: ${destination.name || destination.address}`)}
                 >
                   <View style={styles.itineraryPinB}>
                     <Text style={styles.itineraryPinText}>B</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fsStopCardName} numberOfLines={1}>
-                      Finish: {multiStopDestination.name || 'End Point'}
+                      Finish: {destination.name || 'End Point'}
                     </Text>
                     <Text style={styles.fsStopCardAddr} numberOfLines={1}>
-                      {multiStopDestination.address}
+                      {destination.address}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1199,14 +1175,14 @@ export default function RoutesScreen() {
             </ScrollView>
 
             {/* If route calculated, show quick nav bar */}
-            {multiStopRoute && (
+            {selectedRoute && (
               <View style={styles.fsBottomNavRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.fsNavMetric}>
-                    {multiStopRoute.distance_km} km • {Math.round(multiStopRoute.duration_min)} min
+                    {selectedRoute.distance_km} km • {Math.round(selectedRoute.duration_min)} min
                   </Text>
                   <Text style={styles.fsNavSub}>
-                    ₹{Math.round(multiStopRoute.total_cost_inr || 150)} • {selectedVehicle.name}
+                    ₹{Math.round(selectedRoute.total_cost_inr || 150)} • {selectedVehicle.name}
                   </Text>
                 </View>
                 <TouchableOpacity
