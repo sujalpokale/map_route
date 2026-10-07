@@ -37,6 +37,7 @@ import {
   ChevronDown,
   AlertTriangle,
   RotateCcw,
+  Lock,
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { THEME } from '@/constants/theme';
@@ -48,6 +49,7 @@ import { useVehicleStore } from '@/stores/useVehicleStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
 import { geocodingService } from '@/services/api/geocoding';
 import { GeoPoint, VehicleType } from '@/types';
+import { usePremiumGate } from '@/services/premium';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SNAP_PEEK = 72;
@@ -71,6 +73,7 @@ export default function HomeScreen() {
   } = useRouteStore();
   const { getSelectedVehicle, selectVehicle, vehicles } = useVehicleStore();
   const { startNavigation } = useNavigationStore();
+  const { isPremium: hasMultiStopPremium, requirePremium: requireMultiStopPremium } = usePremiumGate('multi_stop_optimization');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<GeoPoint[]>([]);
@@ -465,10 +468,16 @@ export default function HomeScreen() {
         >
           <TouchableOpacity
             style={styles.chip}
-            onPress={() => router.push('/(tabs)/routes')}
+            onPress={() => {
+              if (!hasMultiStopPremium) {
+                requireMultiStopPremium();
+                return;
+              }
+              router.push('/(tabs)/routes');
+            }}
           >
-            <Sliders size={13} color="#FBBC04" />
-            <Text style={styles.chipText}>Multi-Stop VRP</Text>
+            {hasMultiStopPremium ? <Sliders size={13} color="#FBBC04" /> : <Lock size={13} color="#FBBC04" />}
+            <Text style={styles.chipText}>Multi-Stop VRP{hasMultiStopPremium ? '' : ' · PRO'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
