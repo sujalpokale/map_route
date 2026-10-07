@@ -7,12 +7,12 @@ import { THEME } from '@/constants/theme';
 import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
 import { StopList } from '@/components/route/StopList';
-import { useRouteStore } from '@/stores/useRouteStore';
+import { useMultiStopStore } from '@/stores/useMultiStopStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
 
 export default function ActiveTripSummaryScreen() {
   const router = useRouter();
-  const { stops, toggleStopLock, removeStop, getSelectedRoute } = useRouteStore();
+  const { stops, toggleStopLock, removeStop, getSelectedRoute } = useMultiStopStore();
   const { remainingDistanceKm, remainingDurationMin } = useNavigationStore();
 
   const selectedRoute = getSelectedRoute();
