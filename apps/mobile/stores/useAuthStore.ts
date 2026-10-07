@@ -55,7 +55,7 @@ async function installSession(session: { access_token: string; user: AccountUser
     authApi.getSubscription(),
     authApi.getPreferences(),
   ]);
-  applyVehicleSettings(preferencesResponse.data?.vehicle_settings);
+  applyVehicleSettings(preferencesResponse.data?.vehicle_settings, preferencesResponse.data?.selected_vehicle_id);
   set({
     token: session.access_token,
     account: session.user,
@@ -67,9 +67,12 @@ async function installSession(session: { access_token: string; user: AccountUser
   });
 }
 
-function applyVehicleSettings(value: unknown) {
+function applyVehicleSettings(value: unknown, selectedVehicleId?: unknown) {
   const store = useVehicleStore.getState();
   store.resetVehicles();
+  if (typeof selectedVehicleId === 'string' && store.vehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
+    store.selectVehicle(selectedVehicleId);
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   const update = useVehicleStore.getState().updateVehicleEconomics;
   for (const [id, settings] of Object.entries(value)) {
@@ -110,7 +113,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         authApi.getSubscription(),
         authApi.getPreferences(),
       ]);
-      applyVehicleSettings(preferencesResponse.data?.vehicle_settings);
+      applyVehicleSettings(preferencesResponse.data?.vehicle_settings, preferencesResponse.data?.selected_vehicle_id);
       set({ token, account, user: profileFromAccount(account), subscription: subResponse.data, isAuthenticated: true, isLoading: false });
     } catch {
       await saveToken(null);
