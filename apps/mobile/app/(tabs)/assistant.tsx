@@ -70,6 +70,11 @@ export default function AssistantScreen() {
   };
 
   const handleActionPress = (action: any) => {
+    if (!isPremium) {
+      requirePremium();
+      return;
+    }
+
     if (action.type === 'NAVIGATE' && selectedRoute) {
       startNavigation(
         selectedRoute.steps,
