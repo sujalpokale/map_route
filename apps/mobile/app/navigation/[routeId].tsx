@@ -45,6 +45,10 @@ export default function ActiveNavigationScreen() {
     setRerouting,
     setTrafficLevel,
     replaceRoute,
+    activeRoute,
+    routeOrigin,
+    routeDestination,
+    routeWaypoints,
   } = useNavigationStore();
   const { currentLocation, speedKmh, setLocation, setTracking } = useLocationStore();
   const { completeActiveTrip } = useTripStore();
@@ -53,7 +57,12 @@ export default function ActiveNavigationScreen() {
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const rerouteStarted = useRef(false);
-  const selectedRoute = getSelectedRoute();
+  // Multi-Stop navigation passes its route context through useNavigationStore.
+  // Single Route navigation continues to use the legacy route store fallback.
+  const selectedRoute = activeRoute || getSelectedRoute();
+  const navigationOrigin = routeOrigin || origin;
+  const navigationDestination = routeDestination || destination;
+  const navigationWaypoints = routeWaypoints.length ? routeWaypoints : useRouteStore.getState().waypoints;
 
   useEffect(() => {
     if (!isNavigating || hasArrived) return;
@@ -76,7 +85,7 @@ export default function ActiveNavigationScreen() {
         const { latitude, longitude, heading, speed, accuracy } = position.coords;
         const liveLocation = { latitude, longitude, heading: heading ?? 0, speed: speed ?? 0, accuracy: accuracy ?? 999, timestamp: position.timestamp || Date.now() };
         setLocation(liveLocation);
-        const target = useRouteStore.getState().destination;
+        const target = useNavigationStore.getState().routeDestination || useRouteStore.getState().destination;
         updateLocation(latitude, longitude, Math.max(0, (speed ?? 0) * 3.6), accuracy ?? 999, target || undefined);
       });
     };
@@ -107,15 +116,15 @@ export default function ActiveNavigationScreen() {
       rerouteStarted.current = false;
       return;
     }
-    if (!isNavigating || isRerouting || rerouteStarted.current || !currentLocation || !destination) return;
+    if (!isNavigating || isRerouting || rerouteStarted.current || !currentLocation || !navigationDestination) return;
     rerouteStarted.current = true;
     setRerouting(true);
     const reroute = async () => {
       try {
         const response = await trafficService.calculateTrafficAwareRoute({
           origin: { lat: currentLocation.latitude, lng: currentLocation.longitude, name: 'Current GPS location' },
-          destination,
-          waypoints: useRouteStore.getState().waypoints,
+          destination: navigationDestination,
+          waypoints: navigationWaypoints,
           vehicle_type: selectedVehicle.vehicle_type,
           fuel_type: selectedVehicle.fuel_type,
           fuel_efficiency_kmpl: selectedVehicle.efficiency_kmpl,
@@ -124,7 +133,24 @@ export default function ActiveNavigationScreen() {
         });
         const route = response?.routes.find((candidate) => candidate.id === response.best_route_id) || response?.routes[0];
         if (!route) throw new Error('No new route is available from your current location.');
-        useRouteStore.setState({ candidateRoutes: response!.routes, selectedRouteId: route.id, metadata: response!.metadata });
+        if (useNavigationStore.getState().activeRoute) {
+          useNavigationStore.setState({
+            activeRoute: route,
+            routeOrigin: useLocationStore.getState().currentLocation
+              ? {
+                  lat: useLocationStore.getState().currentLocation!.latitude,
+                  lng: useLocationStore.getState().currentLocation!.longitude,
+                  name: 'Current GPS location',
+                }
+              : navigationOrigin,
+          });
+        } else {
+          useRouteStore.setState({
+            candidateRoutes: response!.routes,
+            selectedRouteId: route.id,
+            metadata: response!.metadata,
+          });
+        }
         replaceRoute(route.steps || [], route.distance_km, route.duration_min, route.coordinates);
       } catch (error) {
         setRerouting(false);
@@ -132,7 +158,7 @@ export default function ActiveNavigationScreen() {
       }
     };
     reroute();
-  }, [isDeviated, isNavigating, isRerouting, currentLocation, destination, setRerouting, replaceRoute]);
+  }, [isDeviated, isNavigating, isRerouting, currentLocation, navigationDestination, navigationWaypoints, navigationOrigin, setRerouting, replaceRoute]);
 
   useEffect(() => {
     if (!isNavigating) return;
@@ -141,19 +167,24 @@ export default function ActiveNavigationScreen() {
     const checkTrafficAlternative = async () => {
       if (busy || useNavigationStore.getState().isDeviated) return;
       const location = useLocationStore.getState().currentLocation;
-      const routeState = useRouteStore.getState();
-      const route = routeState.getSelectedRoute();
+      const legacyRouteState = useRouteStore.getState();
       const navigation = useNavigationStore.getState();
-      if (!location || !route || !routeState.destination || !routeState.metadata?.traffic_available) return;
+      const route = navigation.activeRoute || legacyRouteState.getSelectedRoute();
+      const targetDestination = navigation.routeDestination || legacyRouteState.destination;
+      const routeMetadata = legacyRouteState.metadata;
+      const waypoints = navigation.routeWaypoints.length
+        ? navigation.routeWaypoints
+        : legacyRouteState.waypoints;
+      if (!location || !route || !targetDestination || !routeMetadata?.traffic_available) return;
       busy = true;
       try {
         const suggestion = await trafficService.requestReroute({
           currentLocation: { lat: location.latitude, lng: location.longitude, name: 'Current GPS location' },
-          destination: routeState.destination,
+          destination: targetDestination,
           currentRouteId: String(routeId || route.id),
           remainingRouteTimeSeconds: Math.max(0, Math.round(navigation.remainingDurationMin * 60)),
-          waypoints: routeState.waypoints,
-          avoidFeatures: routeState.metadata?.avoid_features || [],
+          waypoints,
+          avoidFeatures: routeMetadata?.avoid_features || [],
         });
         if (!active || !suggestion?.reroute_available || !suggestion.traffic_available || !suggestion.recommended_route) return;
         const alternative = suggestion.recommended_route;
@@ -176,7 +207,14 @@ export default function ActiveNavigationScreen() {
                 eta_iso: new Date(Date.now() + alternative.duration_min * 60_000).toISOString(),
                 is_recommended: true,
               };
-              useRouteStore.setState({ candidateRoutes: [updatedRoute], selectedRouteId: updatedRoute.id });
+              if (useNavigationStore.getState().activeRoute) {
+                useNavigationStore.setState({ activeRoute: updatedRoute });
+              } else {
+                useRouteStore.setState({
+                  candidateRoutes: [updatedRoute],
+                  selectedRouteId: updatedRoute.id,
+                });
+              }
               replaceRoute(updatedRoute.steps || [], updatedRoute.distance_km, updatedRoute.duration_min, updatedRoute.coordinates);
             } },
           ],
@@ -194,7 +232,7 @@ export default function ActiveNavigationScreen() {
     if (!hasArrived) return;
     stopNavigation();
     completeActiveTrip(selectedRoute?.duration_min || 0, selectedRoute?.fuel_litres || 0, selectedRoute?.total_cost_inr || 0);
-    Alert.alert('You have arrived', destination?.address || destination?.name || 'Destination reached.');
+    Alert.alert('You have arrived', navigationDestination?.address || navigationDestination?.name || 'Destination reached.');
     router.replace('/(tabs)/trips');
   }, [hasArrived]);
 
@@ -225,8 +263,8 @@ export default function ActiveNavigationScreen() {
     <View style={styles.container}>
       {/* Full-bleed Vector Map */}
       <MapViewAbstraction
-        origin={origin}
-        destination={destination}
+        origin={navigationOrigin}
+        destination={navigationDestination}
         activeRoute={selectedRoute}
         activeProgressPct={progressPct}
         currentLocation={

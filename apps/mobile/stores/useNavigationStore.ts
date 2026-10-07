@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TurnStep } from '@/types';
+import { CandidateRoute, GeoPoint, TurnStep } from '@/types';
 
 type Coordinate = [number, number];
 const OFF_ROUTE_DISTANCE_METERS = Math.max(10, Number(process.env.EXPO_PUBLIC_OFF_ROUTE_DISTANCE_METERS || 50));
@@ -25,8 +25,23 @@ interface NavigationState {
   currentSpeedKmh: number;
   eta: number | null;
   trafficLevel: string;
+  activeRoute: CandidateRoute | null;
+  routeOrigin: GeoPoint | null;
+  routeDestination: GeoPoint | null;
+  routeWaypoints: GeoPoint[];
 
-  startNavigation: (steps?: TurnStep[], totalDistanceKm?: number, totalDurationMin?: number, coordinates?: Coordinate[]) => void;
+  startNavigation: (
+    steps?: TurnStep[],
+    totalDistanceKm?: number,
+    totalDurationMin?: number,
+    coordinates?: Coordinate[],
+    context?: {
+      route?: CandidateRoute | null;
+      origin?: GeoPoint | null;
+      destination?: GeoPoint | null;
+      waypoints?: GeoPoint[];
+    },
+  ) => void;
   stopNavigation: () => void;
   updateLocation: (lat: number, lng: number, speedKmh: number, accuracyM: number, destination?: { lat: number; lng: number }) => void;
   setRerouting: (value: boolean) => void;
@@ -98,8 +113,12 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   currentSpeedKmh: 0,
   eta: null,
   trafficLevel: 'Unavailable',
+  activeRoute: null,
+  routeOrigin: null,
+  routeDestination: null,
+  routeWaypoints: [],
 
-  startNavigation: (steps = [], totalDistanceKm = 0, totalDurationMin = 0, coordinates = []) => set({
+  startNavigation: (steps = [], totalDistanceKm = 0, totalDurationMin = 0, coordinates = [], context) => set({
     isNavigating: true,
     isRerouting: false,
     hasArrived: false,
@@ -118,6 +137,10 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     accurateArrivalFixes: 0,
     eta: Date.now() + totalDurationMin * 60_000,
     currentSpeedKmh: 0,
+    activeRoute: context?.route ?? null,
+    routeOrigin: context?.origin ?? null,
+    routeDestination: context?.destination ?? null,
+    routeWaypoints: context?.waypoints ?? [],
   }),
 
   stopNavigation: () => set({
@@ -129,6 +152,10 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     steps: [],
     progressPct: 0,
     currentSpeedKmh: 0,
+    activeRoute: null,
+    routeOrigin: null,
+    routeDestination: null,
+    routeWaypoints: [],
   }),
 
   updateLocation: (lat, lng, speedKmh, accuracyM, destination) => {
