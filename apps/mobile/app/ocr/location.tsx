@@ -13,6 +13,7 @@ import { ocrService } from '@/services/api/ocr';
 import { useOCRLocationStore } from '@/stores/useOCRLocationStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
 import { useRouteStore } from '@/stores/useRouteStore';
+import { useMultiStopStore } from '@/stores/useMultiStopStore';
 import { useLocationStore } from '@/stores/useLocationStore';
 import { useVehicleStore } from '@/stores/useVehicleStore';
 import { trafficService } from '@/services/api/traffic';
@@ -28,7 +29,8 @@ interface RouteEstimate {
 export default function OCRLocationScreen() {
   const router = useRouter();
   const { result, setResult } = useOCRLocationStore();
-  const { setDestination, addStop, calculateRoutes, getSelectedRoute } = useRouteStore();
+  const { setDestination, calculateRoutes, getSelectedRoute } = useRouteStore();
+  const { addStop } = useMultiStopStore();
   const currentLocation = useLocationStore((state) => state.currentLocation);
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
   const { startNavigation } = useNavigationStore();
