@@ -49,6 +49,7 @@ export default function ActiveNavigationScreen() {
     routeOrigin,
     routeDestination,
     routeWaypoints,
+    routeMetadata,
   } = useNavigationStore();
   const { currentLocation, speedKmh, setLocation, setTracking } = useLocationStore();
   const { completeActiveTrip } = useTripStore();
@@ -132,7 +133,7 @@ export default function ActiveNavigationScreen() {
           fuel_type: selectedVehicle.fuel_type,
           fuel_efficiency_kmpl: selectedVehicle.efficiency_kmpl,
           fuel_price_inr: selectedVehicle.fuel_price_inr,
-          avoid_features: useRouteStore.getState().metadata?.avoid_features || [],
+          avoid_features: routeMetadata?.avoid_features || useRouteStore.getState().metadata?.avoid_features || [],
         });
         const route = response?.routes.find((candidate) => candidate.id === response.best_route_id) || response?.routes[0];
         if (!route) throw new Error('No new route is available from your current location.');
@@ -174,11 +175,11 @@ export default function ActiveNavigationScreen() {
       const navigation = useNavigationStore.getState();
       const route = navigation.activeRoute || legacyRouteState.getSelectedRoute();
       const targetDestination = navigation.routeDestination || legacyRouteState.destination;
-      const routeMetadata = legacyRouteState.metadata;
+      const effectiveRouteMetadata = navigation.routeMetadata || legacyRouteState.metadata;
       const waypoints = navigation.routeWaypoints.length
         ? navigation.routeWaypoints
         : legacyRouteState.waypoints;
-      if (!location || !route || !targetDestination || !routeMetadata?.traffic_available) return;
+      if (!location || !route || !targetDestination || !effectiveRouteMetadata?.traffic_available) return;
       busy = true;
       try {
         const suggestion = await trafficService.requestReroute({
@@ -187,7 +188,7 @@ export default function ActiveNavigationScreen() {
           currentRouteId: String(routeId || route.id),
           remainingRouteTimeSeconds: Math.max(0, Math.round(navigation.remainingDurationMin * 60)),
           waypoints,
-          avoidFeatures: routeMetadata?.avoid_features || [],
+          avoidFeatures: effectiveRouteMetadata?.avoid_features || [],
         });
         if (!active || !suggestion?.reroute_available || !suggestion.traffic_available || !suggestion.recommended_route) return;
         const alternative = suggestion.recommended_route;
