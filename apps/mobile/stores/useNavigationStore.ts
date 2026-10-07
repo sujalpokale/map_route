@@ -29,6 +29,7 @@ interface NavigationState {
   routeOrigin: GeoPoint | null;
   routeDestination: GeoPoint | null;
   routeWaypoints: GeoPoint[];
+  routeMetadata: Record<string, any> | null;
 
   startNavigation: (
     steps?: TurnStep[],
@@ -117,6 +118,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   routeOrigin: null,
   routeDestination: null,
   routeWaypoints: [],
+  routeMetadata: null,
 
   startNavigation: (steps = [], totalDistanceKm = 0, totalDurationMin = 0, coordinates = [], context) => set({
     isNavigating: true,
@@ -141,6 +143,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     routeOrigin: context?.origin ?? null,
     routeDestination: context?.destination ?? null,
     routeWaypoints: context?.waypoints ?? [],
+    routeMetadata: context?.metadata ?? null,
   }),
 
   stopNavigation: () => set({
@@ -156,6 +159,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     routeOrigin: null,
     routeDestination: null,
     routeWaypoints: [],
+    routeMetadata: null,
   }),
 
   updateLocation: (lat, lng, speedKmh, accuracyM, destination) => {
