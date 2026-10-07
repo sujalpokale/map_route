@@ -106,6 +106,10 @@ export default function ActiveNavigationScreen() {
   useEffect(() => {
     if (!isNavigating) return;
     const pollTraffic = () => {
+      if (!hasAdvancedNavigation) {
+        setTrafficLevel('Premium');
+        return;
+      }
       const live = useLocationStore.getState().currentLocation;
       if (!live) return;
       trafficService.getTrafficStatus({ lat: live.latitude, lng: live.longitude, name: 'Current GPS location' })
