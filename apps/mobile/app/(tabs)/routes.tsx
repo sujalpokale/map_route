@@ -70,6 +70,7 @@ export default function RoutesScreen() {
     setOptimizationMode,
     calculateMultiStopTour,
     getSelectedRoute,
+    metadata,
     isLoading,
   } = useMultiStopStore();
 
@@ -346,6 +347,7 @@ export default function RoutesScreen() {
           origin,
           destination,
           waypoints: useMultiStopStore.getState().waypoints,
+          metadata,
         }
       );
       router.push({

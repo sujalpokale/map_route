@@ -6,7 +6,7 @@ import {
   ViewStyle,
   Platform,
 } from 'react-native';
-import { Plus, Minus, Layers, Crosshair, Compass } from 'lucide-react-native';
+import { Plus, Minus, Layers, Crosshair, Compass, Lock, Unlock } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { GeoPoint, CandidateRoute, StopItem } from '@/types';
 
@@ -34,6 +34,10 @@ export interface MapViewAbstractionProps {
   showControls?: boolean;
   interactive?: boolean;
   focusedLocation?: { latitude: number; longitude: number; zoom?: number } | null;
+  navigationMode?: boolean;
+  cameraLocked?: boolean;
+  onNavigationCameraInteraction?: () => void;
+  onNavigationCameraLockChange?: (locked: boolean) => void;
 }
 
 export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
@@ -50,6 +54,10 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   showControls = true,
   interactive = true,
   focusedLocation,
+  navigationMode = false,
+  cameraLocked = false,
+  onNavigationCameraInteraction,
+  onNavigationCameraLockChange,
 }) => {
   const webViewRef = useRef<any>(null);
   const isMapReadyRef = useRef<boolean>(false);
@@ -171,6 +179,20 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       justify-content: center;
       z-index: 2;
     }
+    .gps-heading-arrow {
+      position: absolute;
+      left: 50%;
+      top: 1px;
+      width: 0;
+      height: 0;
+      margin-left: -6px;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 12px solid #1A73E8;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45));
+      transform-origin: 6px 18px;
+      z-index: 3;
+    }
     @keyframes radar-pulse {
       0% { transform: scale(0.6); opacity: 1; }
       100% { transform: scale(1.6); opacity: 0; }
@@ -204,6 +226,9 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     var userInteracted = false;
     var autoFollowGps = true;
     var lastFittedRouteKey = '';
+    var navigationMode = ${navigationMode ? "true" : "false"};
+    var navigationLocked = ${navigationMode && cameraLocked ? "true" : "false"};
+    var programmaticMove = false;
 
     var tileUrls = {
       standard: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
@@ -243,8 +268,16 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
 
         // Track when user manually interacts (pinch zoom, drag, pan)
         map.on('movestart dragstart zoomstart touchstart pointerdown', function(e) {
-          userInteracted = true;
-          autoFollowGps = false;
+          if (programmaticMove) return;
+          if (navigationMode) {
+            navigationLocked = false;
+            userInteracted = true;
+            autoFollowGps = false;
+            postAppMessage({ type: 'NAV_MAP_INTERACTION' });
+          } else {
+            userInteracted = true;
+            autoFollowGps = false;
+          }
         });
 
         map.on('click', function(e) {
@@ -396,12 +429,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
 
       // Live GPS Driver Location Puck
       if (currLocData && currLocData.lat) {
-        var puckIcon = L.divIcon({
-          className: 'custom-div-icon',
-          html: '<div class="gps-puck-wrap"><div class="gps-radar-wave"></div><div class="gps-puck-core"></div></div>',
-          iconSize: [38, 38],
-          iconAnchor: [19, 19]
-        });
+        var puckIcon = makeGpsIcon(currLocData.heading || 0);
         gpsMarker = L.marker([currLocData.lat, currLocData.lng], { icon: puckIcon }).addTo(markersGroup);
       }
 
@@ -414,6 +442,21 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           map.fitBounds(allBounds, { padding: [50, 40], maxZoom: 16 });
         }
       }
+    }
+
+    function makeGpsIcon(heading) {
+      var safeHeading = Number.isFinite(heading) ? heading : 0;
+      return L.divIcon({
+        className: 'custom-div-icon',
+        html:
+          '<div class="gps-puck-wrap">' +
+            '<div class="gps-radar-wave"></div>' +
+            '<div class="gps-heading-arrow" style="transform: rotate(' + safeHeading + 'deg);"></div>' +
+            '<div class="gps-puck-core"></div>' +
+          '</div>',
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+      });
     }
 
     window.setMapTheme = function(theme) {
@@ -472,7 +515,33 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
     window.recenter = function(lat, lng) {
       userInteracted = false;
       autoFollowGps = true;
-      if (map) map.flyTo([lat, lng], 16, { animate: true, duration: 0.8 });
+      if (navigationMode) {
+        navigationLocked = true;
+        programmaticMove = true;
+        if (map) map.flyTo([lat, lng], 16, { animate: true, duration: 0.6 });
+        setTimeout(function() { programmaticMove = false; }, 700);
+      } else if (map) {
+        map.flyTo([lat, lng], 16, { animate: true, duration: 0.8 });
+      }
+    };
+
+    window.setNavigationMode = function(enabled) {
+      navigationMode = enabled === true;
+      if (!navigationMode) {
+        navigationLocked = false;
+        autoFollowGps = true;
+      }
+    };
+
+    window.setNavigationLock = function(locked) {
+      navigationLocked = locked === true;
+      if (navigationLocked) {
+        userInteracted = false;
+        autoFollowGps = true;
+      } else {
+        userInteracted = true;
+        autoFollowGps = false;
+      }
     };
 
     window.updateRouteData = function(data, forceFit) {
@@ -485,23 +554,28 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       renderScene(forceFit === true);
     };
 
-    window.updateUserLocation = function(lat, lng, heading) {
+    window.updateUserLocation = function(lat, lng, heading, speedKmh) {
       currLocData = { lat: lat, lng: lng, heading: heading };
+      var puckIcon = makeGpsIcon(heading || 0);
+
       if (gpsMarker) {
         gpsMarker.setLatLng([lat, lng]);
+        gpsMarker.setIcon(puckIcon);
       } else if (markersGroup) {
-        var puckIcon = L.divIcon({
-          className: 'custom-div-icon',
-          html: '<div class="gps-puck-wrap"><div class="gps-radar-wave"></div><div class="gps-puck-core"></div></div>',
-          iconSize: [38, 38],
-          iconAnchor: [19, 19]
-        });
         gpsMarker = L.marker([lat, lng], { icon: puckIcon }).addTo(markersGroup);
       }
 
-      // ONLY gently follow live GPS if the user is NOT actively zooming / panning elsewhere
-      if (autoFollowGps && !userInteracted) {
-        if (map) map.panTo([lat, lng], { animate: true });
+      if (navigationMode && navigationLocked && map) {
+        var speed = Number(speedKmh || 0);
+        var zoom = speed >= 80 ? 14 : speed >= 45 ? 15 : 16;
+        programmaticMove = true;
+        map.setView([lat, lng], zoom, { animate: true });
+        setTimeout(function() { programmaticMove = false; }, 350);
+        return;
+      }
+
+      if (autoFollowGps && !userInteracted && map) {
+        map.panTo([lat, lng], { animate: true });
       }
     };
 
@@ -537,10 +611,10 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
   const pushUserLocation = useCallback(() => {
     if (currentLocation?.latitude && currentLocation?.longitude) {
       webViewRef.current?.injectJavaScript?.(
-        `window.updateUserLocation && window.updateUserLocation(${currentLocation.latitude}, ${currentLocation.longitude}, ${currentLocation.heading || 0}); true;`
+        `window.updateUserLocation && window.updateUserLocation(${currentLocation.latitude}, ${currentLocation.longitude}, ${currentLocation.heading || 0}, ${currentLocation.speed ? currentLocation.speed * 3.6 : 0}); true;`
       );
     }
-  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.heading]);
+  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.heading, currentLocation?.speed]);
 
   // Sync focusedLocation
   useEffect(() => {
@@ -557,6 +631,16 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       pushUserLocation();
     }
   }, [pushUserLocation]);
+
+  useEffect(() => {
+    if (!isMapReadyRef.current) return;
+    webViewRef.current?.injectJavaScript?.(
+      `window.setNavigationMode && window.setNavigationMode(${navigationMode ? 'true' : 'false'}); true;`
+    );
+    webViewRef.current?.injectJavaScript?.(
+      `window.setNavigationLock && window.setNavigationLock(${cameraLocked ? 'true' : 'false'}); true;`
+    );
+  }, [navigationMode, cameraLocked]);
 
   // Sync route & stops data via JS injection without reloading the map
   useEffect(() => {
@@ -600,6 +684,14 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
         isMapReadyRef.current = true;
         pushRouteData(true);
         pushUserLocation();
+        webViewRef.current?.injectJavaScript?.(
+          `window.setNavigationMode && window.setNavigationMode(${navigationMode ? 'true' : 'false'}); true;`
+        );
+        webViewRef.current?.injectJavaScript?.(
+          `window.setNavigationLock && window.setNavigationLock(${cameraLocked ? 'true' : 'false'}); true;`
+        );
+      } else if (data?.type === 'NAV_MAP_INTERACTION') {
+        onNavigationCameraInteraction?.();
       } else if (data?.type === 'MAP_CLICK' && onMapPress) {
         onMapPress({ latitude: data.latitude, longitude: data.longitude });
       }
@@ -617,6 +709,9 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
             isMapReadyRef.current = true;
             pushRouteData(true);
             pushUserLocation();
+            return;
+          } else if (data?.type === 'NAV_MAP_INTERACTION') {
+            onNavigationCameraInteraction?.();
           } else if (data?.type === 'MAP_CLICK' && onMapPress) {
             onMapPress({ latitude: data.latitude, longitude: data.longitude });
           }
@@ -628,6 +723,15 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       return () => window.removeEventListener('message', handleWebMsg);
     }
   }, [onMapPress, pushRouteData, pushUserLocation]);
+
+  const handleNavigationRecenter = () => {
+    if (currentLocation?.latitude && currentLocation?.longitude) {
+      webViewRef.current?.injectJavaScript?.(
+        `window.recenter && window.recenter(${currentLocation.latitude}, ${currentLocation.longitude}); true;`
+      );
+    }
+    onRecenter?.();
+  };
 
   return (
     <View style={[styles.container, style]}>
@@ -658,7 +762,7 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
       )}
 
       {/* Floating Action Controls Stack (Right-side Google Maps Controls) */}
-      {showControls && (
+      {showControls && !navigationMode && (
         <View style={styles.controlsColumn}>
           <TouchableOpacity style={styles.controlBtn} onPress={handleZoomIn}>
             <Plus size={18} color="#FFFFFF" />
@@ -678,6 +782,39 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
           <TouchableOpacity
             style={[styles.controlBtn, styles.recenterBtn]}
             onPress={handleRecenterMap}
+          >
+            <Compass size={18} color={THEME.colors.primaryLight} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {showControls && navigationMode && (
+        <View style={styles.navigationControls}>
+          <TouchableOpacity
+            accessibilityLabel={cameraLocked ? 'Unlock navigation camera' : 'Lock navigation camera'}
+            style={[styles.controlBtn, styles.navigationLockBtn, cameraLocked && styles.navigationLockBtnActive]}
+            onPress={() => {
+              const next = !cameraLocked;
+              webViewRef.current?.injectJavaScript?.(
+                `window.setNavigationLock && window.setNavigationLock(${next ? 'true' : 'false'}); true;`
+              );
+              onNavigationCameraLockChange?.(next);
+              if (next) handleNavigationRecenter();
+            }}
+          >
+            {cameraLocked ? <Lock size={18} color="#FFFFFF" /> : <Unlock size={18} color="#FFFFFF" />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel="Recenter navigation camera"
+            style={[styles.controlBtn, styles.recenterBtn]}
+            onPress={() => {
+              webViewRef.current?.injectJavaScript?.(
+                `window.setNavigationLock && window.setNavigationLock(true); true;`
+              );
+              onNavigationCameraLockChange?.(true);
+              handleNavigationRecenter();
+            }}
           >
             <Compass size={18} color={THEME.colors.primaryLight} />
           </TouchableOpacity>
@@ -710,6 +847,20 @@ const styles = StyleSheet.create({
     top: '36%',
     gap: 10,
     zIndex: 25,
+  },
+  navigationControls: {
+    position: 'absolute',
+    right: 14,
+    top: '38%',
+    gap: 10,
+    zIndex: 25,
+  },
+  navigationLockBtn: {
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+  },
+  navigationLockBtnActive: {
+    backgroundColor: '#1A73E8',
+    borderColor: '#8AB4F8',
   },
   controlBtn: {
     width: 44,
