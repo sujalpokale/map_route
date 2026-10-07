@@ -36,6 +36,11 @@ interface RouteState {
   optimizeMultiStops: () => Promise<boolean>;
   calculateMultiStopTour: (vehicleType?: string) => Promise<boolean>;
   getSelectedRoute: () => CandidateRoute | null;
+  /**
+   * Remove stale single-route draft/results before entering the Multi-Stop planner.
+   * The live origin and any existing multi-stop stops are intentionally preserved.
+   */
+  prepareForMultiStop: () => boolean;
 }
 
 const DEFAULT_ORIGIN: GeoPoint = {
@@ -351,6 +356,29 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     })),
   reorderStops: (newStops) => set({ stops: newStops }),
   setSelectedRouteId: (id) => set({ selectedRouteId: id }),
+
+  prepareForMultiStop: () => {
+    const { stops, destination, waypoints, candidateRoutes } = get();
+    const hasStaleSingleRouteState =
+      stops.length === 0 &&
+      (!!destination || waypoints.length > 0 || candidateRoutes.length > 0);
+
+    if (!hasStaleSingleRouteState) {
+      return false;
+    }
+
+    // Preserve the real/live origin; clear only route-specific state that can
+    // leak from the single-route planner into the Multi-Stop planner.
+    set({
+      destination: null,
+      waypoints: [],
+      candidateRoutes: [],
+      selectedRouteId: null,
+      metadata: null,
+      error: null,
+    });
+    return true;
+  },
 
   calculateRoutes: async (vehicleType = 'CAR', payloadKg = 0) => {
     const { origin, destination, waypoints, optimizationMode } = get();
