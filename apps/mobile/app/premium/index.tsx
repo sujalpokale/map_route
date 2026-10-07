@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronLeft, Crown, Lock, Sparkles } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { THEME } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/services/api/auth';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { useLocalSearchParams } from 'expo-router';
 
 const premiumFeatures = [
   'AI Route Assistant',
@@ -97,11 +96,8 @@ export default function PremiumScreen() {
           <Button
             title={checkoutMessage ? 'Checkout unavailable' : `Upgrade — Premium ${selectedCycle === 'yearly' ? 'Yearly' : 'Monthly'}`}
             onPress={() => {
-              if (plans?.payment_provider !== 'not_configured') {
-                setCheckoutMessage('Opening secure checkout...');
-                return;
-              }
-              setCheckoutMessage('Payment provider is not configured yet. Premium locking is active, but checkout must be connected to Google Play/App Store or your chosen payment provider before customers can pay.');
+              if (plans?.payment_provider === 'not_configured') {
+                setCheckoutMessage('Payment provider is not configured yet. Premium locking is active, but checkout must be connected to Google Play/App Store or your chosen payment provider before customers can pay.');
             }}
             icon={<Crown size={17} color="#090D16" />}
             disabled={Boolean(checkoutMessage)}
