@@ -41,6 +41,7 @@ interface NavigationState {
       origin?: GeoPoint | null;
       destination?: GeoPoint | null;
       waypoints?: GeoPoint[];
+      metadata?: Record<string, any> | null;
     },
   ) => void;
   stopNavigation: () => void;
