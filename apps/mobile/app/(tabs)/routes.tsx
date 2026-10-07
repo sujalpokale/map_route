@@ -371,7 +371,7 @@ export default function RoutesScreen() {
   };
 
   const handleStartNav = () => {
-    if (selectedRoute) {
+    if (multiStopRoute) {
       startNavigation(
         multiStopRoute.steps,
         multiStopRoute.distance_km,
@@ -1035,20 +1035,20 @@ export default function RoutesScreen() {
               ))}
 
               {/* Finish Destination Item */}
-              {destination && (
+              {multiStopDestination && (
                 <TouchableOpacity
                   style={styles.itineraryItem}
-                  onPress={() => handleFocusPoint(destination.lat, destination.lng, `Finish: ${destination.name || destination.address}`)}
+                  onPress={() => handleFocusPoint(multiStopDestination.lat, multiStopDestination.lng, `Finish: ${multiStopDestination.name || multiStopDestination.address}`)}
                 >
                   <View style={styles.itineraryPinB}>
                     <Text style={styles.itineraryPinText}>B</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itineraryItemName} numberOfLines={1}>
-                      Finish: {destination.name || 'End Point'}
+                      Finish: {multiStopDestination.name || 'End Point'}
                     </Text>
                     <Text style={styles.itineraryItemAddr} numberOfLines={1}>
-                      {destination.address}
+                      {multiStopDestination.address}
                     </Text>
                   </View>
                   <Crosshair size={14} color="#EA4335" />
@@ -1108,7 +1108,7 @@ export default function RoutesScreen() {
             <View style={styles.fsTitleWrap}>
               <Text style={styles.fsTitleText}>Full Screen Map</Text>
               <Text style={styles.fsSubText}>
-                {stops.length + (origin ? 1 : 0) + (destination ? 1 : 0)} Waypoints • Drag & Explore
+                {stops.length + (origin ? 1 : 0) + (multiStopDestination ? 1 : 0)} Waypoints • Drag & Explore
               </Text>
             </View>
 
@@ -1175,23 +1175,23 @@ export default function RoutesScreen() {
               })}
 
               {/* Destination Point B */}
-              {destination && (
+              {multiStopDestination && (
                 <TouchableOpacity
                   style={[
                     styles.fsStopCard,
-                    focusedLocation?.latitude === destination.lat && styles.fsStopCardActive,
+                    focusedLocation?.latitude === multiStopDestination.lat && styles.fsStopCardActive,
                   ]}
-                  onPress={() => handleFocusPoint(destination.lat, destination.lng, `Finish: ${destination.name || destination.address}`)}
+                  onPress={() => handleFocusPoint(multiStopDestination.lat, multiStopDestination.lng, `Finish: ${multiStopDestination.name || multiStopDestination.address}`)}
                 >
                   <View style={styles.itineraryPinB}>
                     <Text style={styles.itineraryPinText}>B</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fsStopCardName} numberOfLines={1}>
-                      Finish: {destination.name || 'End Point'}
+                      Finish: {multiStopDestination.name || 'End Point'}
                     </Text>
                     <Text style={styles.fsStopCardAddr} numberOfLines={1}>
-                      {destination.address}
+                      {multiStopDestination.address}
                     </Text>
                   </View>
                 </TouchableOpacity>
