@@ -55,7 +55,7 @@ export default function ActiveNavigationScreen() {
   const { currentLocation, speedKmh, setLocation, setTracking } = useLocationStore();
   const { completeActiveTrip } = useTripStore();
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
-  const { isPremium: hasAdvancedNavigation } = usePremiumGate('advanced_navigation');
+  const { isPremium: hasAdvancedNavigation, requirePremium: requireAdvancedNavigationPremium } = usePremiumGate('advanced_navigation');
 
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [cameraLocked, setCameraLocked] = useState(true);
@@ -352,7 +352,9 @@ export default function ActiveNavigationScreen() {
             </Text>
             {isRerouting && <Text style={styles.reroutingText}>Finding a new route...</Text>}
             {!hasAdvancedNavigation && (
-              <Text style={styles.premiumNavText}>🔒 Live-follow camera & advanced traffic require Premium</Text>
+              <TouchableOpacity onPress={requireAdvancedNavigationPremium}>
+                <Text style={styles.premiumNavText}>🔒 Live-follow camera & advanced traffic require Premium · UPGRADE</Text>
+              </TouchableOpacity>
             )}
             {gpsError && <Text style={styles.reroutingText}>{gpsError}</Text>}
           </View>
