@@ -709,6 +709,8 @@ export const MapViewAbstraction: React.FC<MapViewAbstractionProps> = ({
             isMapReadyRef.current = true;
             pushRouteData(true);
             pushUserLocation();
+            const frame = webViewRef.current;
+            frame?.contentWindow?.postMessage?.({ type: 'SET_NAVIGATION_MODE', enabled: navigationMode, locked: cameraLocked }, '*');
             return;
           } else if (data?.type === 'NAV_MAP_INTERACTION') {
             onNavigationCameraInteraction?.();
