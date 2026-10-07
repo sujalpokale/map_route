@@ -10,7 +10,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Plus,
@@ -70,6 +70,7 @@ export default function RoutesScreen() {
     setOptimizationMode,
     calculateMultiStopTour,
     getSelectedRoute,
+    prepareForMultiStop,
     isLoading,
   } = useRouteStore();
 
@@ -107,6 +108,15 @@ export default function RoutesScreen() {
   const selectedVehicle = getSelectedVehicle();
   const selectedRoute = getSelectedRoute();
   const searchTimeoutRef = useRef<any>(null);
+
+  // Multi-Stop has its own draft context. Remove a stale single-route
+  // destination/result as soon as this tab becomes active, while preserving
+  // the live origin and any genuine multi-stop stops.
+  useFocusEffect(
+    React.useCallback(() => {
+      prepareForMultiStop();
+    }, [prepareForMultiStop])
+  );
 
   const handleFocusPoint = (lat: number, lng: number, label: string, index?: number) => {
     setFocusedLocation({ latitude: lat, longitude: lng, zoom: 17 });
