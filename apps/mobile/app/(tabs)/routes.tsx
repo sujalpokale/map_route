@@ -54,6 +54,7 @@ import { useLocationStore } from '@/stores/useLocationStore';
 import { useNavigationStore } from '@/stores/useNavigationStore';
 import { geocodingService } from '@/services/api/geocoding';
 import { StopItem, GeoPoint, VehicleType } from '@/types';
+import { usePremiumGate } from '@/services/premium';
 
 export default function RoutesScreen() {
   const router = useRouter();
@@ -77,6 +78,7 @@ export default function RoutesScreen() {
   const { getSelectedVehicle, selectVehicle, vehicles } = useVehicleStore();
   const { currentLocation, updateCoordinates } = useLocationStore();
   const { startNavigation } = useNavigationStore();
+  const { isPremium, requirePremium } = usePremiumGate('multi_stop_optimization');
 
   // 1. Start Point State (Live GPS vs Custom Hub)
   const [startPointMode, setStartPointMode] = useState<'LIVE' | 'CUSTOM'>('LIVE');
@@ -321,6 +323,10 @@ export default function RoutesScreen() {
 
     if (stops.length === 0) {
       handleFitAllStops();
+      return;
+    }
+
+    if (!requirePremium()) {
       return;
     }
 
@@ -897,7 +903,9 @@ export default function RoutesScreen() {
             <>
               <Sparkles size={20} color="#FFFFFF" />
               <Text style={styles.bigCalculateBtnText}>
-                Optimize & Calculate Route ({stops.length} Drops)
+                {isPremium
+                  ? `Optimize & Calculate Route (${stops.length} Drops)`
+                  : 'Unlock Multi-Stop Optimization'}
               </Text>
             </>
           )}
