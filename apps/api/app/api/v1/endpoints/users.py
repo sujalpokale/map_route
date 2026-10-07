@@ -72,6 +72,7 @@ async def get_preferences(user=Depends(get_current_user)):
         "user_id": user["user_id"], "map_style": "standard",
         "navigation_voice": True, "traffic_enabled": True,
         "avoid_tolls": False, "avoid_highways": False, "distance_unit": "km",
+        "selected_vehicle_id": "veh_car_02",
         "vehicle_settings": {},
     }
     stored = await get_mongodb().user_preferences.find_one({"user_id": user["user_id"]})
@@ -93,5 +94,5 @@ async def update_preferences(payload: PreferencesPatch, user=Depends(get_current
     )
     return {key: prefs.get(key) for key in (
         "user_id", "map_style", "navigation_voice", "traffic_enabled",
-        "avoid_tolls", "avoid_highways", "distance_unit", "vehicle_settings", "updated_at",
+        "avoid_tolls", "avoid_highways", "distance_unit", "selected_vehicle_id", "vehicle_settings", "updated_at",
     )}
