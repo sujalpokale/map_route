@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, Volume2, VolumeX, Navigation2, Flag } from 'lucide-react-native';
+import { X, Volume2, VolumeX, Navigation2, Flag, Lock, Unlock, LocateFixed, CheckCircle2 } from 'lucide-react-native';
 import { THEME } from '@/constants/theme';
 import { MapViewAbstraction } from '@/components/map/MapViewAbstraction';
 import { TurnManeuverCard } from '@/components/navigation/TurnManeuverCard';
@@ -55,6 +55,8 @@ export default function ActiveNavigationScreen() {
   const selectedVehicle = useVehicleStore((state) => state.getSelectedVehicle());
 
   const [voiceMuted, setVoiceMuted] = useState(false);
+  const [cameraLocked, setCameraLocked] = useState(true);
+  const [gpsReady, setGpsReady] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const rerouteStarted = useRef(false);
   // Multi-Stop navigation passes its route context through useNavigationStore.
@@ -85,6 +87,7 @@ export default function ActiveNavigationScreen() {
         const { latitude, longitude, heading, speed, accuracy } = position.coords;
         const liveLocation = { latitude, longitude, heading: heading ?? 0, speed: speed ?? 0, accuracy: accuracy ?? 999, timestamp: position.timestamp || Date.now() };
         setLocation(liveLocation);
+        setGpsReady(true);
         const target = useNavigationStore.getState().routeDestination || useRouteStore.getState().destination;
         updateLocation(latitude, longitude, Math.max(0, (speed ?? 0) * 3.6), accuracy ?? 999, target || undefined);
       });
@@ -267,6 +270,10 @@ export default function ActiveNavigationScreen() {
         destination={navigationDestination}
         activeRoute={selectedRoute}
         activeProgressPct={progressPct}
+        navigationMode
+        cameraLocked={cameraLocked}
+        onNavigationCameraInteraction={() => setCameraLocked(false)}
+        onNavigationCameraLockChange={setCameraLocked}
         currentLocation={
           currentLocation
             ? {
@@ -295,6 +302,13 @@ export default function ActiveNavigationScreen() {
           <View style={styles.titleBadge}>
             <Navigation2 size={13} color={THEME.colors.primaryLight} />
             <Text style={styles.titleBadgeText}>LIVE NAVIGATION</Text>
+          </View>
+
+          <View style={styles.navStatusBadge}>
+            {gpsReady ? <CheckCircle2 size={13} color="#34A853" /> : <LocateFixed size={13} color="#FBBC04" />}
+            <Text style={styles.navStatusText}>
+              {gpsReady ? (cameraLocked ? 'FOLLOWING' : 'EXPLORE MODE') : 'LOCATING GPS'}
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -338,6 +352,18 @@ export default function ActiveNavigationScreen() {
           remainingDurationMin={remainingDurationMin}
           etaString={eta ? new Date(eta).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '--'}
         />
+
+        <View style={styles.navigationHintRow}>
+          <Text style={styles.navigationHintText}>
+            {cameraLocked ? 'Map follows your live GPS. Drag or pinch the map to explore.' : 'Map unlocked. Tap the lock/recenter control to follow GPS again.'}
+          </Text>
+          {!cameraLocked && (
+            <TouchableOpacity style={styles.resumeFollowBtn} onPress={() => setCameraLocked(true)}>
+              <Lock size={13} color="#FFFFFF" />
+              <Text style={styles.resumeFollowText}>Resume</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <View style={styles.actionRow}>
           <Button
@@ -409,6 +435,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  navStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: THEME.radius.full,
+  },
+  navStatusText: {
+    color: '#E8EAED',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   bottomHUD: {
     position: 'absolute',
     bottom: 0,
@@ -443,6 +486,37 @@ const styles = StyleSheet.create({
     color: THEME.colors.warning,
     fontSize: 11,
     fontWeight: '700',
+  },
+  navigationHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: THEME.radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  navigationHintText: {
+    color: '#CBD5E1',
+    fontSize: 9,
+    lineHeight: 13,
+    flex: 1,
+  },
+  resumeFollowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1A73E8',
+    borderRadius: 9,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  resumeFollowText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   actionRow: {
     flexDirection: 'row',
