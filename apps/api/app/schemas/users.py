@@ -30,6 +30,7 @@ class PreferencesPatch(BaseModel):
     avoid_tolls: bool | None = None
     avoid_highways: bool | None = None
     distance_unit: str | None = Field(default=None, pattern="^(km|mi)$")
+    selected_vehicle_id: str | None = Field(default=None, min_length=1, max_length=100)
     vehicle_settings: dict[str, "VehicleEconomics"] | None = None
 
 
