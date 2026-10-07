@@ -514,10 +514,10 @@ export default function RoutesScreen() {
             <View style={styles.locDotGreen} />
             <View style={{ flex: 1 }}>
               <Text style={styles.locNameText} numberOfLines={1}>
-                {origin?.name || origin?.address || 'Live GPS Location'}
+                {origin?.name || origin?.address || 'No start location selected'}
               </Text>
               <Text style={styles.locGpsText}>
-                GPS: {origin?.lat ? `${origin.lat.toFixed(4)}, ${origin.lng.toFixed(4)}` : 'Detecting...'}
+                {origin?.lat ? `GPS: ${origin.lat.toFixed(4)}, ${origin.lng.toFixed(4)}` : 'Choose Live GPS or search for a start location'}
               </Text>
             </View>
 
